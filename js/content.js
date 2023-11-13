@@ -58,10 +58,10 @@ const main = () => {
   if (typeof localStorage.getItem("isActive") !== "undefined") {
     const temp = localStorage.getItem("isActive");
     if (temp === "false" || temp === false) {
-        isActive = false;
+      isActive = false;
       return;
     } else {
-        isActive = true;
+      isActive = true;
     }
   }
 
@@ -156,10 +156,10 @@ const setDefaultValue = () => {
   }
 };
 
-const resetFrecuency = (index) => {
-  let old = frecuencias.map((frecuency) => {
-    localStorage.setItem(`vol-frecuencia-${frecuency.frecuencia}`, 0);
-    return { ...frecuency, vol: 0 };
+const resetFrequency = (index) => {
+  let old = frecuencias.map((frequency) => {
+    localStorage.setItem(`vol-frecuencia-${frequency.frecuencia}`, 0);
+    return { ...frequency, vol: 0 };
   });
   frecuencias = [...old];
 
@@ -201,18 +201,18 @@ chrome.runtime.onMessage.addListener(function (request, sender, sendResponse) {
       frecuenciaBaja,
       frecuenciaAlta,
       frecuencias: [...old],
-      isActive: isActive
+      isActive: isActive,
     });
   }
 
   if (request.action === "resetFrecuency") {
-    resetFrecuency();
+    resetFrequency();
   }
 
   if (request.action === "toggle-status") {
     isActive = request.value;
-    localStorage.setItem('isActive', isActive);
-    location.reload()
+    localStorage.setItem("isActive", isActive);
+    location.reload();
   }
 
   if (request.action === "changeLowFrecuency") {
