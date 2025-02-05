@@ -1,14 +1,35 @@
 let frecuencias = [
-  { frecuencia: 32, vol: 0 },
+  { frecuencia: 20, vol: 0 },
+  { frecuencia: 25, vol: 0 },
+  { frecuencia: 31.5, vol: 0 },
+  { frecuencia: 40, vol: 0 },
+  { frecuencia: 50, vol: 0 },
   { frecuencia: 63, vol: 0 },
+  { frecuencia: 80, vol: 0 },
+  { frecuencia: 100, vol: 0 },
   { frecuencia: 125, vol: 0 },
+  { frecuencia: 160, vol: 0 },
+  { frecuencia: 200, vol: 0 },
   { frecuencia: 250, vol: 0 },
+  { frecuencia: 315, vol: 0 },
+  { frecuencia: 400, vol: 0 },
   { frecuencia: 500, vol: 0 },
+  { frecuencia: 630, vol: 0 },
+  { frecuencia: 800, vol: 0 },
   { frecuencia: 1000, vol: 0 },
+  { frecuencia: 1250, vol: 0 },
+  { frecuencia: 1600, vol: 0 },
   { frecuencia: 2000, vol: 0 },
+  { frecuencia: 2500, vol: 0 },
+  { frecuencia: 3150, vol: 0 },
   { frecuencia: 4000, vol: 0 },
+  { frecuencia: 5000, vol: 0 },
+  { frecuencia: 6300, vol: 0 },
   { frecuencia: 8000, vol: 0 },
+  { frecuencia: 10000, vol: 0 },
+  { frecuencia: 12500, vol: 0 },
   { frecuencia: 16000, vol: 0 },
+  { frecuencia: 20000, vol: 0 },
 ];
 
 let bands = [];
@@ -23,8 +44,46 @@ let isActive;
 // variables para los nodos de ganancias de bajas y altas
 let gainLow;
 let gainHight;
-let lowPassFilter;
-let hightPassFilter;
+// let lowPassFilter;
+// let hightPassFilter;
+
+// Función para crear filtros LR o Butterworth parametrizables
+function createFilter({
+  type = "highpass", // "highpass" o "lowpass"
+  frequency = 1000, // Frecuencia de corte (Hz)
+  slope = 24, // Pendiente (24, 48 dB/octava)
+  filterType = "LR", // "LR" (Linkwitz-Riley) o "butterworth",
+  ctx,
+}) {
+  const stages = slope / 12; // Etapas necesarias (2 para 24 dB, 4 para 48 dB)
+  const filters = [];
+
+  // Configurar Q según el tipo de filtro
+  const Q = filterType === "LR" ? 0.5 : 0.7071; // Q para LR o Butterworth
+
+  // Crear y configurar cada etapa
+  for (let i = 0; i < stages; i++) {
+    const filter = ctx.createBiquadFilter();
+    filter.type = type;
+    filter.frequency.value = frequency;
+    filter.Q.value = Q;
+    filters.push(filter);
+  }
+
+  // Conectar en serie
+  filters.reduce((prev, curr) => prev.connect(curr));
+
+  return {
+    input: filters[0],
+    output: filters[filters.length - 1],
+    filters: filters, // Opcional: acceso a cada etapa
+  };
+}
+
+// Create filters
+let hightFilter;
+
+let lowFilter;
 
 const main = () => {
   // frecuencias bajas
@@ -77,18 +136,34 @@ const main = () => {
     bands[index] = ctx.createBiquadFilter();
     bands[index].type = "peaking"; // 5 || 'peaking'
     bands[index].frequency.value = item.frecuencia;
-    bands[index].Q.value = 1.4;
+    bands[index].Q.value = 4.3;
     bands[index].gain.value = item.vol;
   });
 
   // filtro pasa bajo
-  lowPassFilter = ctx.createBiquadFilter();
-  lowPassFilter.frequency.value = frecuenciaBaja;
+  lowFilter = createFilter({
+    ctx,
+    filterType: "LR",
+    frequency: frecuenciaBaja,
+    slope: 48,
+    type: "lowpass",
+  });
+  // lowPassFilter = ctx.createBiquadFilter();
+  // lowPassFilter.frequency.value = frecuenciaBaja;
+  // lowPassFilter.Q.value = Math.SQRT1_2;
 
   // filtro pasa alto
-  hightPassFilter = ctx.createBiquadFilter();
-  hightPassFilter.type = "highpass";
-  hightPassFilter.frequency.value = frecuenciaAlta;
+  hightFilter = createFilter({
+    ctx,
+    filterType: "LR",
+    frequency: frecuenciaAlta,
+    slope: 48,
+    type: "highpass",
+  });
+  // hightPassFilter = ctx.createBiquadFilter();
+  // hightPassFilter.type = "highpass";
+  // hightPassFilter.frequency.value = frecuenciaAlta;
+  // hightPassFilter.Q.value = Math.SQRT1_2;
 
   // ganacia por canal
   gainLow = ctx.createGain();
@@ -102,10 +177,10 @@ const main = () => {
   // unir los canales
   let merger = ctx.createChannelMerger(2);
 
-  gainLow.connect(lowPassFilter);
-  gainHight.connect(hightPassFilter);
+  gainLow.connect(lowFilter.input);
+  gainHight.connect(hightFilter.input);
 
-  for (i = 1; i < 10; i++) {
+  for (i = 1; i < frecuencias.length; i++) {
     bands[i - 1].connect(bands[i]);
   }
   // crear splitter y merge para poder separar los dos canales L y R
@@ -125,12 +200,12 @@ const main = () => {
   mediaElement.connect(splitterRight);
 
   // uniendo los dos canales L y R en uno solo que sera R
-  splitterRight.connect(mergeRight, 1, 1);
+  splitterRight.connect(mergeRight, 0, 1);
   splitterRight.connect(mergeRight, 0, 1);
 
   // uniendo los dos canales L y R en uno solo que sera L
   splitterLeft.connect(mergeLeft, 1, 0);
-  splitterLeft.connect(mergeLeft, 0, 0);
+  splitterLeft.connect(mergeLeft, 1, 0);
 
   // Uniendo los canales L y R antes modificados y
   // dando un canal cada uno final
@@ -141,15 +216,31 @@ const main = () => {
 
   // mediaElement.connect(bands[0]);
   // asignando los filtros a cada canal
-  bands[9].connect(splitter);
+  bands[frecuencias.length - 1].connect(splitter);
 
   splitter.connect(gainLow, 0);
   splitter.connect(gainHight, 1);
 
-  lowPassFilter.connect(merger, 0, 0);
-  hightPassFilter.connect(merger, 0, 1);
+  lowFilter.output.connect(merger, 0, 0);
+  hightFilter.output.connect(merger, 0, 1);
 
-  merger.connect(ctx.destination);
+  let lowCutFilter = Array(4)
+    .fill()
+    .map(() => {
+      const lowCut = ctx.createBiquadFilter();
+      lowCut.type = "highpass";
+      lowCut.frequency.value = getLowCut();
+      lowCut.Q.value = 0.5;
+      return lowCut;
+    });
+
+  merger.connect(lowCutFilter[0]);
+  lowCutFilter.forEach((filter, index) => {
+    if (index < lowCutFilter.length - 1) {
+      filter.connect(lowCutFilter[index + 1]);
+    }
+  });
+  lowCutFilter[lowCutFilter.length - 1].connect(ctx.destination);
 };
 
 const setDefaultValue = () => {
@@ -247,13 +338,19 @@ chrome.runtime.onMessage.addListener(function (request, sender, sendResponse) {
 
   if (request.action === "changeLowFrecuency") {
     frecuenciaBaja = request.value;
-    lowPassFilter.frequency.value = request.value;
+    // lowPassFilter.frequency.value = request.value;
+    lowFilter?.filters?.forEach(
+      (filter) => (filter.frequency.value = request.value)
+    );
     localStorage.setItem("frecuenciaBaja", frecuenciaBaja);
   }
 
   if (request.action === "changeHightFrecuency") {
     frecuenciaAlta = request.value;
-    hightPassFilter.frequency.value = request.value;
+    // hightPassFilter.frequency.value = request.value;
+    hightFilter?.filters?.forEach(
+      (filter) => (filter.frequency.value = request.value)
+    );
     localStorage.setItem("frecuenciaAlta", frecuenciaAlta);
   }
 
@@ -291,3 +388,11 @@ chrome.runtime.onMessage.addListener(function (request, sender, sendResponse) {
     localStorage.setItem(`vol-frecuencia-${frecuency}`, value);
   }
 });
+
+function getLowCut() {
+  const lowCut = localStorage.getItem("lowCutFrequency");
+  if (isNaN(Number(lowCut))) {
+    return 30;
+  }
+  return Number(lowCut);
+}

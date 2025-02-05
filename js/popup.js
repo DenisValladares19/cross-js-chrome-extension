@@ -5,20 +5,43 @@ chrome.tabs.query({ active: true, currentWindow: true }, function (tabs) {
 });
 
 let frecuencias = [
-  { frecuencia: 32, vol: 0 },
+  { frecuencia: 20, vol: 0 },
+  { frecuencia: 25, vol: 0 },
+  { frecuencia: 31.5, vol: 0 },
+  { frecuencia: 40, vol: 0 },
+  { frecuencia: 50, vol: 0 },
   { frecuencia: 63, vol: 0 },
+  { frecuencia: 80, vol: 0 },
+  { frecuencia: 100, vol: 0 },
   { frecuencia: 125, vol: 0 },
+  { frecuencia: 160, vol: 0 },
+  { frecuencia: 200, vol: 0 },
   { frecuencia: 250, vol: 0 },
+  { frecuencia: 315, vol: 0 },
+  { frecuencia: 400, vol: 0 },
   { frecuencia: 500, vol: 0 },
+  { frecuencia: 630, vol: 0 },
+  { frecuencia: 800, vol: 0 },
   { frecuencia: 1000, vol: 0 },
+  { frecuencia: 1250, vol: 0 },
+  { frecuencia: 1600, vol: 0 },
   { frecuencia: 2000, vol: 0 },
+  { frecuencia: 2500, vol: 0 },
+  { frecuencia: 3150, vol: 0 },
   { frecuencia: 4000, vol: 0 },
+  { frecuencia: 5000, vol: 0 },
+  { frecuencia: 6300, vol: 0 },
   { frecuencia: 8000, vol: 0 },
+  { frecuencia: 10000, vol: 0 },
+  { frecuencia: 12500, vol: 0 },
   { frecuencia: 16000, vol: 0 },
+  { frecuencia: 20000, vol: 0 },
 ];
 let isActive;
 
-document.querySelector(".copyright").innerHTML = `&copy; DENIS VALLADARES ${new Date().getFullYear()}`
+document.querySelector(
+  ".copyright"
+).innerHTML = `&copy; DENIS VALLADARES ${new Date().getFullYear()}`;
 
 /**
  * Funcion para quitar o mostrar decimales de un
@@ -50,8 +73,8 @@ let createBarraBand = () => {
             }">Vol: ${deleteDecimal(item.vol, 2)}</span>
             <input 
                 type="range" 
-                min="-10" 
-                max="10" 
+                min="-12" 
+                max="12" 
                 step="0.00001" 
                 class="range-vertical"
                 value=${item.vol}
@@ -84,13 +107,13 @@ window.addEventListener("DOMContentLoaded", () => {
 
   const switchStatus = document.querySelector("#status");
 
-  switchStatus.addEventListener('click', () => {
+  switchStatus.addEventListener("click", () => {
     chrome.tabs.query({ active: true, currentWindow: true }, function (tabs) {
-        chrome.tabs.sendMessage(tabs[0].id, {
-          action: "toggle-status",
-          value: !isActive
-        });
+      chrome.tabs.sendMessage(tabs[0].id, {
+        action: "toggle-status",
+        value: !isActive,
       });
+    });
   });
 
   // creando las barras de ecualizacion
@@ -220,17 +243,18 @@ chrome.runtime.onMessage.addListener(function (request, sender, sendResponse) {
     const inputGananciaAlta = document.getElementById("gananciaAlta");
     const switchStatus = document.querySelector("#status");
 
-    
     const {
-        gananciaBaja,
-        gananciaAlta,
-        frecuenciaBaja,
-        frecuenciaAlta,
-        frecuencias: oldFrecuencies,
-        isActive: active
+      gananciaBaja,
+      gananciaAlta,
+      frecuenciaBaja,
+      frecuenciaAlta,
+      frecuencias: oldFrecuencies,
+      isActive: active,
     } = request;
     isActive = Boolean(active);
-    switchStatus.className = `wrapper-switch ${isActive ? "active" : "disabled"}`;
+    switchStatus.className = `wrapper-switch ${
+      isActive ? "active" : "disabled"
+    }`;
 
     mostrarFrecuenciaBaja.innerText = deleteDecimal(frecuenciaBaja);
     inputFrecuenciaBaja.value = frecuenciaBaja;
@@ -247,8 +271,10 @@ chrome.runtime.onMessage.addListener(function (request, sender, sendResponse) {
     frecuencias = [...oldFrecuencies];
 
     frecuencias.forEach((item, i) => {
-        document.getElementById(`band-${i + 1}`).value = item.vol; // modificando el input para reflejar el cambio
-        document.getElementById(`span-vol-${i + 1}`).innerText = `Vol: ${deleteDecimal(item.vol, 2)}`; // modificando el span para reflejar que cambio el volumen
-      });
+      document.getElementById(`band-${i + 1}`).value = item.vol; // modificando el input para reflejar el cambio
+      document.getElementById(
+        `span-vol-${i + 1}`
+      ).innerText = `Vol: ${deleteDecimal(item.vol, 2)}`; // modificando el span para reflejar que cambio el volumen
+    });
   }
 });
