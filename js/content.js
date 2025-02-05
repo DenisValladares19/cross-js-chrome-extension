@@ -145,7 +145,7 @@ const main = () => {
     ctx,
     filterType: "LR",
     frequency: frecuenciaBaja,
-    slope: 48,
+    slope: 24,
     type: "lowpass",
   });
   // lowPassFilter = ctx.createBiquadFilter();
@@ -157,7 +157,7 @@ const main = () => {
     ctx,
     filterType: "LR",
     frequency: frecuenciaAlta,
-    slope: 48,
+    slope: 24,
     type: "highpass",
   });
   // hightPassFilter = ctx.createBiquadFilter();
