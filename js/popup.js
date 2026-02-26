@@ -98,6 +98,17 @@ window.addEventListener("DOMContentLoaded", () => {
   const mostrarFrecuenciaAlta = document.getElementById("verFrecuenciaAlta");
   const inputGananciaAlta = document.getElementById("gananciaAlta");
   const mostrarGananciaAlta = document.getElementById("verGananciaAlta");
+
+  // BBE Controles UI
+  const inputBbeLowContour = document.getElementById("bbeLowContour");
+  const inputBbeBassBoost = document.getElementById("bbeBassBoost");
+  const inputBbeProcess = document.getElementById("bbeProcess");
+  const checkBbeLow = document.getElementById("enableBBELow");
+  const checkBbeProcess = document.getElementById("enableBBEProcess");
+  const verBbeLowContour = document.getElementById("verBbeLowContour");
+  const verBbeBassBoost = document.getElementById("verBbeBassBoost");
+  const verBbeProcess = document.getElementById("verBbeProcess");
+
   // container del modal
   const modal = document.querySelector(".modal-container");
   const close = document.querySelector(".close");
@@ -205,6 +216,55 @@ window.addEventListener("DOMContentLoaded", () => {
     }
   });
 
+  // Event Listeners para BBE
+  inputBbeLowContour.addEventListener("input", (e) => {
+    verBbeLowContour.innerText = parseFloat(e.target.value).toFixed(1);
+    chrome.tabs.query({ active: true, currentWindow: true }, function (tabs) {
+      chrome.tabs.sendMessage(tabs[0].id, {
+        action: "changeBbeLowContour",
+        value: e.target.value,
+      });
+    });
+  });
+
+  inputBbeBassBoost.addEventListener("input", (e) => {
+    verBbeBassBoost.innerText = parseFloat(e.target.value).toFixed(1);
+    chrome.tabs.query({ active: true, currentWindow: true }, function (tabs) {
+      chrome.tabs.sendMessage(tabs[0].id, {
+        action: "changeBbeBassBoost",
+        value: e.target.value,
+      });
+    });
+  });
+
+  inputBbeProcess.addEventListener("input", (e) => {
+    verBbeProcess.innerText = parseFloat(e.target.value).toFixed(1);
+    chrome.tabs.query({ active: true, currentWindow: true }, function (tabs) {
+      chrome.tabs.sendMessage(tabs[0].id, {
+        action: "changeBbeProcess",
+        value: e.target.value,
+      });
+    });
+  });
+
+  checkBbeLow.addEventListener("change", (e) => {
+    chrome.tabs.query({ active: true, currentWindow: true }, function (tabs) {
+      chrome.tabs.sendMessage(tabs[0].id, {
+        action: "toggleBbeLow",
+        value: e.target.checked,
+      });
+    });
+  });
+
+  checkBbeProcess.addEventListener("change", (e) => {
+    chrome.tabs.query({ active: true, currentWindow: true }, function (tabs) {
+      chrome.tabs.sendMessage(tabs[0].id, {
+        action: "toggleBbeProcess",
+        value: e.target.checked,
+      });
+    });
+  });
+
   frecuencias.map((item, index) => {
     document
       .getElementById(`band-${index + 1}`)
@@ -250,6 +310,7 @@ chrome.runtime.onMessage.addListener(function (request, sender, sendResponse) {
       frecuenciaAlta,
       frecuencias: oldFrecuencies,
       isActive: active,
+      bbeParams,
     } = request;
     isActive = Boolean(active);
     switchStatus.className = `wrapper-switch ${
@@ -267,6 +328,26 @@ chrome.runtime.onMessage.addListener(function (request, sender, sendResponse) {
 
     mostrarGananciaAlta.innerText = deleteDecimal(gananciaAlta, 2);
     inputGananciaAlta.value = gananciaAlta;
+
+    if (bbeParams) {
+      const inputBbeLowContour = document.getElementById("bbeLowContour");
+      const inputBbeBassBoost = document.getElementById("bbeBassBoost");
+      const inputBbeProcess = document.getElementById("bbeProcess");
+      const checkBbeLow = document.getElementById("enableBBELow");
+      const checkBbeProcess = document.getElementById("enableBBEProcess");
+      const verBbeLowContour = document.getElementById("verBbeLowContour");
+      const verBbeBassBoost = document.getElementById("verBbeBassBoost");
+      const verBbeProcess = document.getElementById("verBbeProcess");
+
+      inputBbeLowContour.value = bbeParams.lowContour;
+      inputBbeBassBoost.value = bbeParams.bassBoost;
+      inputBbeProcess.value = bbeParams.process;
+      checkBbeLow.checked = bbeParams.lowEnabled;
+      checkBbeProcess.checked = bbeParams.processEnabled;
+      verBbeLowContour.innerText = bbeParams.lowContour.toFixed(1);
+      verBbeBassBoost.innerText = bbeParams.bassBoost.toFixed(1);
+      verBbeProcess.innerText = bbeParams.process.toFixed(1);
+    }
 
     frecuencias = [...oldFrecuencies];
 
