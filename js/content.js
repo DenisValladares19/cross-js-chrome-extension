@@ -84,7 +84,7 @@ function createBBELowNode(ctx, inputNode, options = {}) {
   // Extra Bass Boost para tono más profundo
   const bassBoostFilter = ctx.createBiquadFilter();
   bassBoostFilter.type = "lowpass";
-  bassBoostFilter.frequency.value = 60; // Hz para profundidad sub
+  bassBoostFilter.frequency.value = 50; // Hz para profundidad sub
   bassBoostFilter.Q.value = 0.707;
 
   const bassBoostGainNode = ctx.createGain();
@@ -495,7 +495,7 @@ chrome.runtime.onMessage.addListener(function (request, sender, sendResponse) {
     frecuenciaBaja = request.value;
     // lowPassFilter.frequency.value = request.value;
     lowFilter?.filters?.forEach(
-      (filter) => (filter.frequency.value = request.value)
+      (filter) => (filter.frequency.value = request.value),
     );
     localStorage.setItem("frecuenciaBaja", frecuenciaBaja);
   }
@@ -504,7 +504,7 @@ chrome.runtime.onMessage.addListener(function (request, sender, sendResponse) {
     frecuenciaAlta = request.value;
     // hightPassFilter.frequency.value = request.value;
     hightFilter?.filters?.forEach(
-      (filter) => (filter.frequency.value = request.value)
+      (filter) => (filter.frequency.value = request.value),
     );
     localStorage.setItem("frecuenciaAlta", frecuenciaAlta);
   }
