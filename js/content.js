@@ -64,12 +64,6 @@ let bbeParams = {
 function createBBELowNode(ctx, inputNode, options = {}) {
   const isEnabled = options.enabled !== undefined ? options.enabled : true;
 
-  if (!isEnabled) {
-    return {
-      output: inputNode,
-    };
-  }
-
   const lowContourGain = options.lowContourGain || 0;
   const bassBoostGain = options.bassBoostGain || 0;
   const frequency = 80; // Hz
@@ -91,7 +85,7 @@ function createBBELowNode(ctx, inputNode, options = {}) {
   // Extra Bass Boost para tono más profundo
   const bassBoostFilter = ctx.createBiquadFilter();
   bassBoostFilter.type = "lowpass";
-  bassBoostFilter.frequency.value = 50; // Hz para profundidad sub
+  bassBoostFilter.frequency.value = 60; // Hz para profundidad sub
   bassBoostFilter.Q.value = 0.707;
 
   const bassBoostGainNode = ctx.createGain();
@@ -123,12 +117,6 @@ function createBBELowNode(ctx, inputNode, options = {}) {
 // Función para crear el módulo BBE Process (Claridad)
 function createBBEProcessNode(ctx, inputNode, options = {}) {
   const isEnabled = options.enabled !== undefined ? options.enabled : true;
-
-  if (!isEnabled) {
-    return {
-      output: inputNode,
-    };
-  }
 
   const processGain = options.processGain || 0;
   const frequency = 4500; // Hz (entre 3kHz y 5kHz)
@@ -503,7 +491,7 @@ chrome.runtime.onMessage.addListener(function (request, sender, sendResponse) {
     frecuenciaBaja = request.value;
     // lowPassFilter.frequency.value = request.value;
     lowFilter?.filters?.forEach(
-      (filter) => (filter.frequency.value = request.value),
+      (filter) => (filter.frequency.value = request.value)
     );
     localStorage.setItem("frecuenciaBaja", frecuenciaBaja);
   }
@@ -512,7 +500,7 @@ chrome.runtime.onMessage.addListener(function (request, sender, sendResponse) {
     frecuenciaAlta = request.value;
     // hightPassFilter.frequency.value = request.value;
     hightFilter?.filters?.forEach(
-      (filter) => (filter.frequency.value = request.value),
+      (filter) => (filter.frequency.value = request.value)
     );
     localStorage.setItem("frecuenciaAlta", frecuenciaAlta);
   }
@@ -581,13 +569,27 @@ chrome.runtime.onMessage.addListener(function (request, sender, sendResponse) {
   if (request.action === "toggleBbeLow") {
     bbeParams.lowEnabled = request.value;
     localStorage.setItem("bbeLowEnabled", bbeParams.lowEnabled);
-    location.reload();
+    if (bbeLowNode) {
+      const gLow = bbeParams.lowEnabled
+        ? Math.pow(10, bbeParams.lowContour / 20) - 1
+        : 0;
+      const gBass = bbeParams.lowEnabled
+        ? Math.pow(10, bbeParams.bassBoost / 20) - 1
+        : 0;
+      bbeLowNode.lowContourGainNode.gain.value = gLow;
+      bbeLowNode.bassBoostGainNode.gain.value = gBass;
+    }
   }
 
   if (request.action === "toggleBbeProcess") {
     bbeParams.processEnabled = request.value;
     localStorage.setItem("bbeProcessEnabled", bbeParams.processEnabled);
-    location.reload();
+    if (bbeProcessNode) {
+      const g = bbeParams.processEnabled
+        ? Math.pow(10, bbeParams.process / 20) - 1
+        : 0;
+      bbeProcessNode.processGainNode.gain.value = g;
+    }
   }
 });
 
