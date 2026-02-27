@@ -45,128 +45,14 @@ let isActive;
 let gainLow;
 let gainHight;
 
-// variables para los nodos de Aphex
-let exciterNode;
-let bigBottomNode;
+// Nodos de Control de Tono
+let bassToneNode;
+let trebleToneNode;
 
-// Parámetros Aphex
-let aphexParams = {
-  exciterTune: 3000,
-  exciterMix: 0,
-  exciterEnabled: true,
-  bigBottomTune: 80,
-  bigBottomDrive: 0,
-  bigBottomMix: 0,
-  bigBottomEnabled: true,
+let toneParams = {
+  bassGain: 0,
+  trebleGain: 0,
 };
-
-// Implementación simplificada de la curva para armónicos
-function makeExciterCurve() {
-  const n_samples = 44100;
-  const curve = new Float32Array(n_samples);
-  for (let i = 0; i < n_samples; i++) {
-    const x = (i * 2) / n_samples - 1;
-    // Generación asimétrica: para x > 0 aplicamos una no-linealidad suave
-    // Esto genera armónicos pares e impares
-    if (x > 0) {
-      curve[i] = Math.tanh(x * 1.5) / Math.tanh(1.5);
-    } else {
-      // Para x < 0, mantenemos más linealidad o una curva diferente
-      curve[i] = x * 0.9;
-    }
-  }
-  return curve;
-}
-
-// Función para crear el módulo Aphex Aural Exciter
-function createAphexExciterNode(ctx, inputNode, options = {}) {
-  const tune = options.tune || 3000;
-  const mix = options.mix || 0;
-  const isEnabled = options.enabled !== undefined ? options.enabled : true;
-
-  // Filtro pasa-alto para el sidechain
-  const hpf = ctx.createBiquadFilter();
-  hpf.type = "highpass";
-  hpf.frequency.value = tune;
-  hpf.Q.value = 0.707;
-
-  // Generador de armónicos
-  const shaper = ctx.createWaveShaper();
-  shaper.curve = makeExciterCurve();
-  shaper.oversample = "4x";
-
-  // Control de mezcla
-  const mixGain = ctx.createGain();
-  mixGain.gain.value = isEnabled ? Math.pow(10, mix / 20) - 1 : 0;
-  if (mixGain.gain.value < 0) mixGain.gain.value = 0;
-
-  const merger = ctx.createGain();
-
-  // Conexión Dry
-  inputNode.connect(merger);
-
-  // Conexión Sidechain (Exciter)
-  inputNode.connect(hpf);
-  hpf.connect(shaper);
-  shaper.connect(mixGain);
-  mixGain.connect(merger);
-
-  return {
-    output: merger,
-    hpf: hpf,
-    mixGain: mixGain,
-  };
-}
-
-// Función para crear el módulo Aphex Big Bottom
-function createAphexBigBottomNode(ctx, inputNode, options = {}) {
-  const tune = options.tune || 80;
-  const drive = options.drive || 0;
-  const mix = options.mix || 0;
-  const isEnabled = options.enabled !== undefined ? options.enabled : true;
-
-  // Filtro pasa-bajo para el sidechain
-  const lpf = ctx.createBiquadFilter();
-  lpf.type = "lowpass";
-  lpf.frequency.value = tune;
-  lpf.Q.value = 0.707;
-
-  // Drive (intensidad de entrada al compresor)
-  const driveGain = ctx.createGain();
-  driveGain.gain.value = Math.pow(10, drive / 20);
-
-  // Compresor (Simulando comportamiento óptico)
-  const compressor = ctx.createDynamicsCompressor();
-  compressor.threshold.value = -24;
-  compressor.knee.value = 30;
-  compressor.ratio.value = 4;
-  compressor.attack.value = 0.01; // 10ms
-  compressor.release.value = 0.1; // 100ms
-
-  // Control de mezcla
-  const mixGain = ctx.createGain();
-  mixGain.gain.value = isEnabled ? Math.pow(10, mix / 20) - 1 : 0;
-  if (mixGain.gain.value < 0) mixGain.gain.value = 0;
-
-  const merger = ctx.createGain();
-
-  // Conexión Dry
-  inputNode.connect(merger);
-
-  // Conexión Sidechain (Big Bottom)
-  inputNode.connect(lpf);
-  lpf.connect(driveGain);
-  driveGain.connect(compressor);
-  compressor.connect(mixGain);
-  mixGain.connect(merger);
-
-  return {
-    output: merger,
-    lpf: lpf,
-    driveGain: driveGain,
-    mixGain: mixGain,
-  };
-}
 
 // Función para crear filtros LR o Butterworth parametrizables
 function createFilter({
@@ -260,7 +146,20 @@ const main = () => {
     bands[index].gain.value = item.vol;
   });
 
-  // filtro pasa bajo
+  // Configuración de Control de Tono (Simil Poweramp)
+  // LowShelf para graves profundos
+  bassToneNode = ctx.createBiquadFilter();
+  bassToneNode.type = "lowshelf";
+  bassToneNode.frequency.value = 80; // Frecuencia para graves más profundos (simil Poweramp)
+  bassToneNode.gain.value = toneParams.bassGain;
+
+  // HighShelf para agudos
+  trebleToneNode = ctx.createBiquadFilter();
+  trebleToneNode.type = "highshelf";
+  trebleToneNode.frequency.value = 5000; // Frecuencia típica para claridad
+  trebleToneNode.gain.value = toneParams.trebleGain;
+
+  // filtro pasa bajo crossover
   lowFilter = createFilter({
     ctx,
     filterType: "LR",
@@ -269,7 +168,7 @@ const main = () => {
     type: "lowpass",
   });
 
-  // filtro pasa alto
+  // filtro pasa alto crossover
   hightFilter = createFilter({
     ctx,
     filterType: "LR",
@@ -296,6 +195,7 @@ const main = () => {
   for (i = 1; i < frecuencias.length; i++) {
     bands[i - 1].connect(bands[i]);
   }
+
   // crear splitter y merge para poder separar los dos canales L y R
   const splitterRight = ctx.createChannelSplitter(2);
   const mergeRight = ctx.createChannelMerger(2);
@@ -317,29 +217,17 @@ const main = () => {
   mergeLeft.connect(merge, 0, 0);
   mergeRight.connect(merge, 0, 1);
 
+  // Conexión del grafo: media -> EQ -> Tone Control -> Crossover
   merge.connect(bands[0]);
-
-  bands[frecuencias.length - 1].connect(splitter);
+  bands[frecuencias.length - 1].connect(bassToneNode);
+  bassToneNode.connect(trebleToneNode);
+  trebleToneNode.connect(splitter);
 
   splitter.connect(gainLow, 0);
   splitter.connect(gainHight, 1);
 
-  // Integración de Aphex Aural Exciter y Big Bottom
-  bigBottomNode = createAphexBigBottomNode(ctx, lowFilter.output, {
-    tune: aphexParams.bigBottomTune,
-    drive: aphexParams.bigBottomDrive,
-    mix: aphexParams.bigBottomMix,
-    enabled: aphexParams.bigBottomEnabled,
-  });
-
-  exciterNode = createAphexExciterNode(ctx, hightFilter.output, {
-    tune: aphexParams.exciterTune,
-    mix: aphexParams.exciterMix,
-    enabled: aphexParams.exciterEnabled,
-  });
-
-  bigBottomNode.output.connect(merger, 0, 0);
-  exciterNode.output.connect(merger, 0, 1);
+  lowFilter.output.connect(merger, 0, 0);
+  hightFilter.output.connect(merger, 0, 1);
 
   let lowCutFilter = Array(4)
     .fill()
@@ -393,37 +281,17 @@ const setDefaultValue = () => {
     localStorage.setItem("isActive", true);
   }
 
-  // Inicialización de parámetros Aphex
-  if (localStorage.getItem("aphexExciterTune") === null) {
-    localStorage.setItem("aphexExciterTune", 3000);
+  // Inicialización de tonos
+  if (localStorage.getItem("toneBassGain") === null) {
+    localStorage.setItem("toneBassGain", 0);
   }
-  if (localStorage.getItem("aphexExciterMix") === null) {
-    localStorage.setItem("aphexExciterMix", 0);
-  }
-  if (localStorage.getItem("aphexExciterEnabled") === null) {
-    localStorage.setItem("aphexExciterEnabled", true);
-  }
-  if (localStorage.getItem("aphexBigBottomTune") === null) {
-    localStorage.setItem("aphexBigBottomTune", 80);
-  }
-  if (localStorage.getItem("aphexBigBottomDrive") === null) {
-    localStorage.setItem("aphexBigBottomDrive", 0);
-  }
-  if (localStorage.getItem("aphexBigBottomMix") === null) {
-    localStorage.setItem("aphexBigBottomMix", 0);
-  }
-  if (localStorage.getItem("aphexBigBottomEnabled") === null) {
-    localStorage.setItem("aphexBigBottomEnabled", true);
+  if (localStorage.getItem("toneTrebleGain") === null) {
+    localStorage.setItem("toneTrebleGain", 0);
   }
 
-  aphexParams = {
-    exciterTune: parseFloat(localStorage.getItem("aphexExciterTune")),
-    exciterMix: parseFloat(localStorage.getItem("aphexExciterMix")),
-    exciterEnabled: localStorage.getItem("aphexExciterEnabled") !== "false",
-    bigBottomTune: parseFloat(localStorage.getItem("aphexBigBottomTune")),
-    bigBottomDrive: parseFloat(localStorage.getItem("aphexBigBottomDrive")),
-    bigBottomMix: parseFloat(localStorage.getItem("aphexBigBottomMix")),
-    bigBottomEnabled: localStorage.getItem("aphexBigBottomEnabled") !== "false",
+  toneParams = {
+    bassGain: parseFloat(localStorage.getItem("toneBassGain")),
+    trebleGain: parseFloat(localStorage.getItem("toneTrebleGain")),
   };
 };
 
@@ -465,14 +333,9 @@ chrome.runtime.onMessage.addListener(function (request, sender, sendResponse) {
     });
     frecuencias = [...old];
 
-    aphexParams = {
-      exciterTune: parseFloat(localStorage.getItem("aphexExciterTune")) || 3000,
-      exciterMix: parseFloat(localStorage.getItem("aphexExciterMix")) || 0,
-      exciterEnabled: localStorage.getItem("aphexExciterEnabled") !== "false",
-      bigBottomTune: parseFloat(localStorage.getItem("aphexBigBottomTune")) || 80,
-      bigBottomDrive: parseFloat(localStorage.getItem("aphexBigBottomDrive")) || 0,
-      bigBottomMix: parseFloat(localStorage.getItem("aphexBigBottomMix")) || 0,
-      bigBottomEnabled: localStorage.getItem("aphexBigBottomEnabled") !== "false",
+    toneParams = {
+      bassGain: parseFloat(localStorage.getItem("toneBassGain")) || 0,
+      trebleGain: parseFloat(localStorage.getItem("toneTrebleGain")) || 0,
     };
 
     chrome.runtime.sendMessage({
@@ -483,7 +346,7 @@ chrome.runtime.onMessage.addListener(function (request, sender, sendResponse) {
       frecuenciaAlta,
       frecuencias: [...old],
       isActive: isActive,
-      aphexParams: aphexParams,
+      toneParams: toneParams,
     });
   }
 
@@ -547,64 +410,20 @@ chrome.runtime.onMessage.addListener(function (request, sender, sendResponse) {
     localStorage.setItem(`vol-frecuencia-${frecuency}`, value);
   }
 
-  // Mensajes para Aphex
-  if (request.action === "changeAphexExciterTune") {
-    aphexParams.exciterTune = parseFloat(request.value);
-    localStorage.setItem("aphexExciterTune", aphexParams.exciterTune);
-    if (exciterNode) {
-      exciterNode.hpf.frequency.value = aphexParams.exciterTune;
+  // Mensajes para Control de Tono
+  if (request.action === "changeBassTone") {
+    toneParams.bassGain = parseFloat(request.value);
+    localStorage.setItem("toneBassGain", toneParams.bassGain);
+    if (bassToneNode) {
+      bassToneNode.gain.value = toneParams.bassGain;
     }
   }
 
-  if (request.action === "changeAphexExciterMix") {
-    aphexParams.exciterMix = parseFloat(request.value);
-    localStorage.setItem("aphexExciterMix", aphexParams.exciterMix);
-    if (exciterNode && aphexParams.exciterEnabled) {
-      let g = Math.pow(10, aphexParams.exciterMix / 20) - 1;
-      exciterNode.mixGain.gain.value = g < 0 ? 0 : g;
-    }
-  }
-
-  if (request.action === "toggleAphexExciter") {
-    aphexParams.exciterEnabled = request.value;
-    localStorage.setItem("aphexExciterEnabled", aphexParams.exciterEnabled);
-    if (exciterNode) {
-      let g = aphexParams.exciterEnabled ? Math.pow(10, aphexParams.exciterMix / 20) - 1 : 0;
-      exciterNode.mixGain.gain.value = g < 0 ? 0 : g;
-    }
-  }
-
-  if (request.action === "changeAphexBigBottomTune") {
-    aphexParams.bigBottomTune = parseFloat(request.value);
-    localStorage.setItem("aphexBigBottomTune", aphexParams.bigBottomTune);
-    if (bigBottomNode) {
-      bigBottomNode.lpf.frequency.value = aphexParams.bigBottomTune;
-    }
-  }
-
-  if (request.action === "changeAphexBigBottomDrive") {
-    aphexParams.bigBottomDrive = parseFloat(request.value);
-    localStorage.setItem("aphexBigBottomDrive", aphexParams.bigBottomDrive);
-    if (bigBottomNode) {
-      bigBottomNode.driveGain.gain.value = Math.pow(10, aphexParams.bigBottomDrive / 20);
-    }
-  }
-
-  if (request.action === "changeAphexBigBottomMix") {
-    aphexParams.bigBottomMix = parseFloat(request.value);
-    localStorage.setItem("aphexBigBottomMix", aphexParams.bigBottomMix);
-    if (bigBottomNode && aphexParams.bigBottomEnabled) {
-      let g = Math.pow(10, aphexParams.bigBottomMix / 20) - 1;
-      bigBottomNode.mixGain.gain.value = g < 0 ? 0 : g;
-    }
-  }
-
-  if (request.action === "toggleAphexBigBottom") {
-    aphexParams.bigBottomEnabled = request.value;
-    localStorage.setItem("aphexBigBottomEnabled", aphexParams.bigBottomEnabled);
-    if (bigBottomNode) {
-      let g = aphexParams.bigBottomEnabled ? Math.pow(10, aphexParams.bigBottomMix / 20) - 1 : 0;
-      bigBottomNode.mixGain.gain.value = g < 0 ? 0 : g;
+  if (request.action === "changeTrebleTone") {
+    toneParams.trebleGain = parseFloat(request.value);
+    localStorage.setItem("toneTrebleGain", toneParams.trebleGain);
+    if (trebleToneNode) {
+      trebleToneNode.gain.value = toneParams.trebleGain;
     }
   }
 });

@@ -86,81 +86,33 @@
           </fieldset>
 
           <br />
-          <fieldset>
+          <fieldset id="section-tone">
             <legend align="center" style="padding: 0 10px">
-              Aphex Aural Exciter & Big Bottom
+              Controles de Tono
             </legend>
             <div style="padding: 15px">
-              <div
-                style="
-                  display: flex;
-                  justify-content: space-between;
-                  align-items: center;
-                "
-              >
-                <label>Big Bottom (Bajos Profundos)</label>
-                <input type="checkbox" id="enableAphexBigBottom" checked />
-              </div>
-              <label for="aphexBigBottomTune"
-                >Tune (<span id="verAphexBigBottomTune"></span> Hz)</label
-              >
-              <input
-                type="range"
-                min="50"
-                max="200"
-                step="1"
-                id="aphexBigBottomTune"
-              />
-              <label for="aphexBigBottomDrive"
-                >Drive (<span id="verAphexBigBottomDrive"></span> dB)</label
+              <label for="bassTone"
+                >Bajos (<span id="verBassTone"></span> dB)</label
               >
               <input
                 type="range"
                 min="0"
                 max="12"
                 step="0.1"
-                id="aphexBigBottomDrive"
+                id="bassTone"
+                value="0"
               />
-              <label for="aphexBigBottomMix"
-                >Mix (<span id="verAphexBigBottomMix"></span> dB)</label
+              <br /><br />
+              <label for="trebleTone"
+                >Agudos (<span id="verTrebleTone"></span> dB)</label
               >
               <input
                 type="range"
                 min="0"
                 max="12"
                 step="0.1"
-                id="aphexBigBottomMix"
-              />
-              <hr style="margin: 15px 0; border: 0; border-top: 1px solid #555" />
-              <div
-                style="
-                  display: flex;
-                  justify-content: space-between;
-                  align-items: center;
-                "
-              >
-                <label>Aural Exciter (Claridad/Brillo)</label>
-                <input type="checkbox" id="enableAphexExciter" checked />
-              </div>
-              <label for="aphexExciterTune"
-                >Tune (<span id="verAphexExciterTune"></span> Hz)</label
-              >
-              <input
-                type="range"
-                min="700"
-                max="7000"
-                step="10"
-                id="aphexExciterTune"
-              />
-              <label for="aphexExciterMix"
-                >Mix (<span id="verAphexExciterMix"></span> dB)</label
-              >
-              <input
-                type="range"
-                min="0"
-                max="12"
-                step="0.1"
-                id="aphexExciterMix"
+                id="trebleTone"
+                value="0"
               />
             </div>
           </fieldset>

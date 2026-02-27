@@ -99,20 +99,11 @@ window.addEventListener("DOMContentLoaded", () => {
   const inputGananciaAlta = document.getElementById("gananciaAlta");
   const mostrarGananciaAlta = document.getElementById("verGananciaAlta");
 
-  // Aphex Controles UI
-  const inputAphexBigBottomTune = document.getElementById("aphexBigBottomTune");
-  const inputAphexBigBottomDrive = document.getElementById("aphexBigBottomDrive");
-  const inputAphexBigBottomMix = document.getElementById("aphexBigBottomMix");
-  const checkAphexBigBottom = document.getElementById("enableAphexBigBottom");
-  const verAphexBigBottomTune = document.getElementById("verAphexBigBottomTune");
-  const verAphexBigBottomDrive = document.getElementById("verAphexBigBottomDrive");
-  const verAphexBigBottomMix = document.getElementById("verAphexBigBottomMix");
-
-  const inputAphexExciterTune = document.getElementById("aphexExciterTune");
-  const inputAphexExciterMix = document.getElementById("aphexExciterMix");
-  const checkAphexExciter = document.getElementById("enableAphexExciter");
-  const verAphexExciterTune = document.getElementById("verAphexExciterTune");
-  const verAphexExciterMix = document.getElementById("verAphexExciterMix");
+  // Tone Control UI
+  const inputBassTone = document.getElementById("bassTone");
+  const inputTrebleTone = document.getElementById("trebleTone");
+  const verBassTone = document.getElementById("verBassTone");
+  const verTrebleTone = document.getElementById("verTrebleTone");
 
   // container del modal
   const modal = document.querySelector(".modal-container");
@@ -221,72 +212,23 @@ window.addEventListener("DOMContentLoaded", () => {
     }
   });
 
-  // Event Listeners para Aphex Big Bottom
-  inputAphexBigBottomTune.addEventListener("input", (e) => {
-    verAphexBigBottomTune.innerText = deleteDecimal(e.target.value);
+  // Tone Control Listeners
+  inputBassTone.addEventListener("input", (e) => {
+    verBassTone.innerText = parseFloat(e.target.value).toFixed(1);
     chrome.tabs.query({ active: true, currentWindow: true }, function (tabs) {
       chrome.tabs.sendMessage(tabs[0].id, {
-        action: "changeAphexBigBottomTune",
+        action: "changeBassTone",
         value: e.target.value,
       });
     });
   });
 
-  inputAphexBigBottomDrive.addEventListener("input", (e) => {
-    verAphexBigBottomDrive.innerText = parseFloat(e.target.value).toFixed(1);
+  inputTrebleTone.addEventListener("input", (e) => {
+    verTrebleTone.innerText = parseFloat(e.target.value).toFixed(1);
     chrome.tabs.query({ active: true, currentWindow: true }, function (tabs) {
       chrome.tabs.sendMessage(tabs[0].id, {
-        action: "changeAphexBigBottomDrive",
+        action: "changeTrebleTone",
         value: e.target.value,
-      });
-    });
-  });
-
-  inputAphexBigBottomMix.addEventListener("input", (e) => {
-    verAphexBigBottomMix.innerText = parseFloat(e.target.value).toFixed(1);
-    chrome.tabs.query({ active: true, currentWindow: true }, function (tabs) {
-      chrome.tabs.sendMessage(tabs[0].id, {
-        action: "changeAphexBigBottomMix",
-        value: e.target.value,
-      });
-    });
-  });
-
-  checkAphexBigBottom.addEventListener("change", (e) => {
-    chrome.tabs.query({ active: true, currentWindow: true }, function (tabs) {
-      chrome.tabs.sendMessage(tabs[0].id, {
-        action: "toggleAphexBigBottom",
-        value: e.target.checked,
-      });
-    });
-  });
-
-  // Event Listeners para Aphex Aural Exciter
-  inputAphexExciterTune.addEventListener("input", (e) => {
-    verAphexExciterTune.innerText = deleteDecimal(e.target.value);
-    chrome.tabs.query({ active: true, currentWindow: true }, function (tabs) {
-      chrome.tabs.sendMessage(tabs[0].id, {
-        action: "changeAphexExciterTune",
-        value: e.target.value,
-      });
-    });
-  });
-
-  inputAphexExciterMix.addEventListener("input", (e) => {
-    verAphexExciterMix.innerText = parseFloat(e.target.value).toFixed(1);
-    chrome.tabs.query({ active: true, currentWindow: true }, function (tabs) {
-      chrome.tabs.sendMessage(tabs[0].id, {
-        action: "changeAphexExciterMix",
-        value: e.target.value,
-      });
-    });
-  });
-
-  checkAphexExciter.addEventListener("change", (e) => {
-    chrome.tabs.query({ active: true, currentWindow: true }, function (tabs) {
-      chrome.tabs.sendMessage(tabs[0].id, {
-        action: "toggleAphexExciter",
-        value: e.target.checked,
       });
     });
   });
@@ -336,7 +278,7 @@ chrome.runtime.onMessage.addListener(function (request, sender, sendResponse) {
       frecuenciaAlta,
       frecuencias: oldFrecuencies,
       isActive: active,
-      aphexParams,
+      toneParams,
     } = request;
     isActive = Boolean(active);
     switchStatus.className = `wrapper-switch ${
@@ -355,34 +297,16 @@ chrome.runtime.onMessage.addListener(function (request, sender, sendResponse) {
     mostrarGananciaAlta.innerText = deleteDecimal(gananciaAlta, 2);
     inputGananciaAlta.value = gananciaAlta;
 
-    if (aphexParams) {
-      const inputAphexBigBottomTune = document.getElementById("aphexBigBottomTune");
-      const inputAphexBigBottomDrive = document.getElementById("aphexBigBottomDrive");
-      const inputAphexBigBottomMix = document.getElementById("aphexBigBottomMix");
-      const checkAphexBigBottom = document.getElementById("enableAphexBigBottom");
-      const verAphexBigBottomTune = document.getElementById("verAphexBigBottomTune");
-      const verAphexBigBottomDrive = document.getElementById("verAphexBigBottomDrive");
-      const verAphexBigBottomMix = document.getElementById("verAphexBigBottomMix");
+    if (toneParams) {
+      const inputBassTone = document.getElementById("bassTone");
+      const inputTrebleTone = document.getElementById("trebleTone");
+      const verBassTone = document.getElementById("verBassTone");
+      const verTrebleTone = document.getElementById("verTrebleTone");
 
-      const inputAphexExciterTune = document.getElementById("aphexExciterTune");
-      const inputAphexExciterMix = document.getElementById("aphexExciterMix");
-      const checkAphexExciter = document.getElementById("enableAphexExciter");
-      const verAphexExciterTune = document.getElementById("verAphexExciterTune");
-      const verAphexExciterMix = document.getElementById("verAphexExciterMix");
-
-      inputAphexBigBottomTune.value = aphexParams.bigBottomTune;
-      inputAphexBigBottomDrive.value = aphexParams.bigBottomDrive;
-      inputAphexBigBottomMix.value = aphexParams.bigBottomMix;
-      checkAphexBigBottom.checked = aphexParams.bigBottomEnabled;
-      verAphexBigBottomTune.innerText = aphexParams.bigBottomTune;
-      verAphexBigBottomDrive.innerText = aphexParams.bigBottomDrive.toFixed(1);
-      verAphexBigBottomMix.innerText = aphexParams.bigBottomMix.toFixed(1);
-
-      inputAphexExciterTune.value = aphexParams.exciterTune;
-      inputAphexExciterMix.value = aphexParams.exciterMix;
-      checkAphexExciter.checked = aphexParams.exciterEnabled;
-      verAphexExciterTune.innerText = aphexParams.exciterTune;
-      verAphexExciterMix.innerText = aphexParams.exciterMix.toFixed(1);
+      inputBassTone.value = toneParams.bassGain;
+      inputTrebleTone.value = toneParams.trebleGain;
+      verBassTone.innerText = toneParams.bassGain.toFixed(1);
+      verTrebleTone.innerText = toneParams.trebleGain.toFixed(1);
     }
 
     frecuencias = [...oldFrecuencies];
