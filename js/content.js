@@ -47,113 +47,6 @@ let gainHight;
 // let lowPassFilter;
 // let hightPassFilter;
 
-// variables para los nodos de BBE Sonic Maximizer
-let bbeLowNode;
-let bbeProcessNode;
-
-// Parámetros BBE
-let bbeParams = {
-  lowContour: 4,
-  bassBoost: 4,
-  process: 3,
-  lowEnabled: true,
-  processEnabled: true,
-};
-
-// Función para crear el módulo BBE Low Contour
-function createBBELowNode(ctx, inputNode, options = {}) {
-  const lowContourGain = options.lowContourGain || 0;
-  const bassBoostGain = options.bassBoostGain || 0;
-  const isEnabled = options.enabled !== undefined ? options.enabled : true;
-  const frequency = 80; // Hz
-
-  // Crear nodos internos
-  const filter = ctx.createBiquadFilter();
-  filter.type = "lowpass";
-  filter.frequency.value = frequency;
-  filter.Q.value = 0.707;
-
-  const lowContourGainNode = ctx.createGain();
-  // Al ser paralelo, sumamos el efecto al original
-  lowContourGainNode.gain.value = isEnabled
-    ? Math.pow(10, lowContourGain / 20) - 1
-    : 0;
-
-  const merger = ctx.createGain(); // Sumador final del módulo
-
-  // Extra Bass Boost para tono más profundo
-  const bassBoostFilter = ctx.createBiquadFilter();
-  bassBoostFilter.type = "lowpass";
-  bassBoostFilter.frequency.value = 50; // Hz para profundidad sub
-  bassBoostFilter.Q.value = 0.707;
-
-  const bassBoostGainNode = ctx.createGain();
-  bassBoostGainNode.gain.value = isEnabled
-    ? Math.pow(10, bassBoostGain / 20) - 1
-    : 0;
-
-  const delay = ctx.createDelay(0.1);
-  delay.delayTime.value = 0.001; // 1ms
-
-  // Arquitectura:
-  // input -> dry path -> merger
-  // input -> filter -> lowContourGainNode -> merger
-  // input -> bassBoostFilter -> bassBoostGainNode -> merger
-  // merger -> delay
-
-  inputNode.connect(merger);
-  inputNode.connect(filter);
-  filter.connect(lowContourGainNode);
-  lowContourGainNode.connect(merger);
-
-  inputNode.connect(bassBoostFilter);
-  bassBoostFilter.connect(bassBoostGainNode);
-  bassBoostGainNode.connect(merger);
-
-  merger.connect(delay);
-
-  return {
-    output: delay,
-    lowContourGainNode: lowContourGainNode,
-    bassBoostGainNode: bassBoostGainNode,
-  };
-}
-
-// Función para crear el módulo BBE Process (Claridad)
-function createBBEProcessNode(ctx, inputNode, options = {}) {
-  const processGain = options.processGain || 0;
-  const isEnabled = options.enabled !== undefined ? options.enabled : true;
-  const frequency = 4500; // Hz (entre 3kHz y 5kHz)
-
-  // Crear nodos internos
-  const filter = ctx.createBiquadFilter();
-  filter.type = "highpass";
-  filter.frequency.value = frequency;
-  filter.Q.value = 0.707;
-
-  const processGainNode = ctx.createGain();
-  // Convertir dB a ganancia lineal
-  processGainNode.gain.value = isEnabled
-    ? Math.pow(10, processGain / 20) - 1
-    : 0;
-
-  const merger = ctx.createGain(); // Sumador final del módulo
-
-  // Arquitectura:
-  // input -> dry path -> merger
-  // input -> filter -> processGainNode -> merger
-
-  inputNode.connect(merger);
-  inputNode.connect(filter);
-  filter.connect(processGainNode);
-  processGainNode.connect(merger);
-
-  return {
-    output: merger,
-    processGainNode: processGainNode,
-  };
-}
-
 // Función para crear filtros LR o Butterworth parametrizables
 function createFilter({
   type = "highpass", // "highpass" o "lowpass"
@@ -328,22 +221,8 @@ const main = () => {
   splitter.connect(gainLow, 0);
   splitter.connect(gainHight, 1);
 
-  // Integración del módulo BBE Sonic Maximizer
-  // Aplicamos Low Contour y Bass Boost a la banda de bajos
-  bbeLowNode = createBBELowNode(ctx, lowFilter.output, {
-    lowContourGain: bbeParams.lowContour,
-    bassBoostGain: bbeParams.bassBoost,
-    enabled: bbeParams.lowEnabled,
-  });
-
-  // Aplicamos Process (realce de armónicos) a la banda de altos
-  bbeProcessNode = createBBEProcessNode(ctx, hightFilter.output, {
-    processGain: bbeParams.process,
-    enabled: bbeParams.processEnabled,
-  });
-
-  bbeLowNode.output.connect(merger, 0, 0);
-  bbeProcessNode.output.connect(merger, 0, 1);
+  lowFilter.output.connect(merger, 0, 0);
+  hightFilter.output.connect(merger, 0, 1);
 
   let lowCutFilter = Array(4)
     .fill()
@@ -396,31 +275,6 @@ const setDefaultValue = () => {
   if (!localStorage.getItem("isActive")) {
     localStorage.setItem("isActive", true);
   }
-
-  // Inicialización de parámetros BBE
-  if (localStorage.getItem("bbeLowContour") === null) {
-    localStorage.setItem("bbeLowContour", 4);
-  }
-  if (localStorage.getItem("bbeBassBoost") === null) {
-    localStorage.setItem("bbeBassBoost", 4);
-  }
-  if (localStorage.getItem("bbeProcess") === null) {
-    localStorage.setItem("bbeProcess", 3);
-  }
-  if (localStorage.getItem("bbeLowEnabled") === null) {
-    localStorage.setItem("bbeLowEnabled", true);
-  }
-  if (localStorage.getItem("bbeProcessEnabled") === null) {
-    localStorage.setItem("bbeProcessEnabled", true);
-  }
-
-  bbeParams = {
-    lowContour: parseFloat(localStorage.getItem("bbeLowContour")),
-    bassBoost: parseFloat(localStorage.getItem("bbeBassBoost")),
-    process: parseFloat(localStorage.getItem("bbeProcess")),
-    lowEnabled: localStorage.getItem("bbeLowEnabled") !== "false",
-    processEnabled: localStorage.getItem("bbeProcessEnabled") !== "false",
-  };
 };
 
 const resetFrequency = (index) => {
@@ -461,14 +315,6 @@ chrome.runtime.onMessage.addListener(function (request, sender, sendResponse) {
     });
     frecuencias = [...old];
 
-    bbeParams = {
-      lowContour: parseFloat(localStorage.getItem("bbeLowContour")) || 4,
-      bassBoost: parseFloat(localStorage.getItem("bbeBassBoost")) || 4,
-      process: parseFloat(localStorage.getItem("bbeProcess")) || 3,
-      lowEnabled: localStorage.getItem("bbeLowEnabled") !== "false",
-      processEnabled: localStorage.getItem("bbeProcessEnabled") !== "false",
-    };
-
     chrome.runtime.sendMessage({
       action: "load-info",
       gananciaBaja,
@@ -477,7 +323,6 @@ chrome.runtime.onMessage.addListener(function (request, sender, sendResponse) {
       frecuenciaAlta,
       frecuencias: [...old],
       isActive: isActive,
-      bbeParams: bbeParams,
     });
   }
 
@@ -541,59 +386,6 @@ chrome.runtime.onMessage.addListener(function (request, sender, sendResponse) {
     bands = [...oldBands];
 
     localStorage.setItem(`vol-frecuencia-${frecuency}`, value);
-  }
-
-  if (request.action === "changeBbeLowContour") {
-    bbeParams.lowContour = parseFloat(request.value);
-    localStorage.setItem("bbeLowContour", bbeParams.lowContour);
-    if (bbeLowNode && bbeParams.lowEnabled) {
-      bbeLowNode.lowContourGainNode.gain.value =
-        Math.pow(10, bbeParams.lowContour / 20) - 1;
-    }
-  }
-
-  if (request.action === "changeBbeBassBoost") {
-    bbeParams.bassBoost = parseFloat(request.value);
-    localStorage.setItem("bbeBassBoost", bbeParams.bassBoost);
-    if (bbeLowNode && bbeParams.lowEnabled) {
-      bbeLowNode.bassBoostGainNode.gain.value =
-        Math.pow(10, bbeParams.bassBoost / 20) - 1;
-    }
-  }
-
-  if (request.action === "changeBbeProcess") {
-    bbeParams.process = parseFloat(request.value);
-    localStorage.setItem("bbeProcess", bbeParams.process);
-    if (bbeProcessNode && bbeParams.processEnabled) {
-      bbeProcessNode.processGainNode.gain.value =
-        Math.pow(10, bbeParams.process / 20) - 1;
-    }
-  }
-
-  if (request.action === "toggleBbeLow") {
-    bbeParams.lowEnabled = request.value;
-    localStorage.setItem("bbeLowEnabled", bbeParams.lowEnabled);
-    if (bbeLowNode) {
-      const gLow = bbeParams.lowEnabled
-        ? Math.pow(10, bbeParams.lowContour / 20) - 1
-        : 0;
-      const gBass = bbeParams.lowEnabled
-        ? Math.pow(10, bbeParams.bassBoost / 20) - 1
-        : 0;
-      bbeLowNode.lowContourGainNode.gain.value = gLow;
-      bbeLowNode.bassBoostGainNode.gain.value = gBass;
-    }
-  }
-
-  if (request.action === "toggleBbeProcess") {
-    bbeParams.processEnabled = request.value;
-    localStorage.setItem("bbeProcessEnabled", bbeParams.processEnabled);
-    if (bbeProcessNode) {
-      const g = bbeParams.processEnabled
-        ? Math.pow(10, bbeParams.process / 20) - 1
-        : 0;
-      bbeProcessNode.processGainNode.gain.value = g;
-    }
   }
 });
 
