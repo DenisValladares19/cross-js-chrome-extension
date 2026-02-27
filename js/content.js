@@ -62,10 +62,9 @@ let bbeParams = {
 
 // Función para crear el módulo BBE Low Contour
 function createBBELowNode(ctx, inputNode, options = {}) {
-  const isEnabled = options.enabled !== undefined ? options.enabled : true;
-
   const lowContourGain = options.lowContourGain || 0;
   const bassBoostGain = options.bassBoostGain || 0;
+  const isEnabled = options.enabled !== undefined ? options.enabled : true;
   const frequency = 80; // Hz
 
   // Crear nodos internos
@@ -116,9 +115,8 @@ function createBBELowNode(ctx, inputNode, options = {}) {
 
 // Función para crear el módulo BBE Process (Claridad)
 function createBBEProcessNode(ctx, inputNode, options = {}) {
-  const isEnabled = options.enabled !== undefined ? options.enabled : true;
-
   const processGain = options.processGain || 0;
+  const isEnabled = options.enabled !== undefined ? options.enabled : true;
   const frequency = 4500; // Hz (entre 3kHz y 5kHz)
 
   // Crear nodos internos
@@ -491,7 +489,7 @@ chrome.runtime.onMessage.addListener(function (request, sender, sendResponse) {
     frecuenciaBaja = request.value;
     // lowPassFilter.frequency.value = request.value;
     lowFilter?.filters?.forEach(
-      (filter) => (filter.frequency.value = request.value)
+      (filter) => (filter.frequency.value = request.value),
     );
     localStorage.setItem("frecuenciaBaja", frecuenciaBaja);
   }
@@ -500,7 +498,7 @@ chrome.runtime.onMessage.addListener(function (request, sender, sendResponse) {
     frecuenciaAlta = request.value;
     // hightPassFilter.frequency.value = request.value;
     hightFilter?.filters?.forEach(
-      (filter) => (filter.frequency.value = request.value)
+      (filter) => (filter.frequency.value = request.value),
     );
     localStorage.setItem("frecuenciaAlta", frecuenciaAlta);
   }
