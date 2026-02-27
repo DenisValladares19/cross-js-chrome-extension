@@ -86,32 +86,34 @@
           </fieldset>
 
           <br />
-          <fieldset id="section-tone">
+          <fieldset id="section-bass-processor">
             <legend align="center" style="padding: 0 10px">
-              Controles de Tono
+              Procesador de Tono (Cuerpo y Brillo)
             </legend>
             <div style="padding: 15px">
-              <label for="bassTone"
-                >Bajos (<span id="verBassTone"></span> dB)</label
-              >
+              <div style="display: flex; justify-content: space-between; align-items: center;">
+                <label for="bassBody">Cuerpo/Profundidad (<span id="verBassBody"></span>%)</label>
+                <input type="checkbox" id="enableBassBody" checked />
+              </div>
               <input
                 type="range"
                 min="0"
-                max="12"
-                step="0.1"
-                id="bassTone"
+                max="100"
+                step="1"
+                id="bassBody"
                 value="0"
               />
               <br /><br />
-              <label for="trebleTone"
-                >Agudos (<span id="verTrebleTone"></span> dB)</label
-              >
+              <div style="display: flex; justify-content: space-between; align-items: center;">
+                <label for="trebleAir">Brillo/Claridad (<span id="verTrebleAir"></span>%)</label>
+                <input type="checkbox" id="enableTrebleAir" checked />
+              </div>
               <input
                 type="range"
                 min="0"
-                max="12"
-                step="0.1"
-                id="trebleTone"
+                max="100"
+                step="1"
+                id="trebleAir"
                 value="0"
               />
             </div>

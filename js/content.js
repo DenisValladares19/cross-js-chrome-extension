@@ -45,14 +45,86 @@ let isActive;
 let gainLow;
 let gainHight;
 
-// Nodos de Control de Tono
-let bassToneNode;
-let trebleToneNode;
+// Nodos del Procesador de Bajo y Tono
+let bassProcessorNode;
+let trebleAirNode;
+let masterLimiter;
 
-let toneParams = {
-  bassGain: 0,
-  trebleGain: 0,
+let processorParams = {
+  bassBody: 0,
+  trebleAir: 0,
+  bassEnabled: true,
+  trebleEnabled: true,
 };
+
+// Curva de saturación suave para dar "cuerpo" al bajo
+function makeBassSaturationCurve() {
+  const n_samples = 44100;
+  const curve = new Float32Array(n_samples);
+  for (let i = 0; i < n_samples; i++) {
+    const x = (i * 2) / n_samples - 1;
+    if (x > 0) {
+      curve[i] = Math.tanh(x * 1.2);
+    } else {
+      curve[i] = x * 0.8;
+    }
+  }
+  return curve;
+}
+
+// Función para crear el procesador de bajo profundo
+function createDeepBassNode(ctx, inputNode, options = {}) {
+  const amount = options.amount || 0;
+  const isEnabled = options.enabled !== undefined ? options.enabled : true;
+
+  // Sidechain para el bajo
+  const lpf = ctx.createBiquadFilter();
+  lpf.type = "lowpass";
+  lpf.frequency.value = 150;
+  lpf.Q.value = 1.0;
+
+  // Realce de sub-bajo (Thump)
+  const hump = ctx.createBiquadFilter();
+  hump.type = "peaking";
+  hump.frequency.value = 55;
+  hump.Q.value = 2.0;
+  hump.gain.value = isEnabled ? (amount / 100) * 10 : 0;
+
+  // Saturador (Cuerpo/Armónicos)
+  const saturator = ctx.createWaveShaper();
+  saturator.curve = makeBassSaturationCurve();
+  saturator.oversample = "4x";
+
+  // Compresor de bajo para dar sustain/consistencia
+  const comp = ctx.createDynamicsCompressor();
+  comp.threshold.value = -20;
+  comp.ratio.value = 4;
+  comp.attack.value = 0.02;
+  comp.release.value = 0.15;
+
+  // Ganancia del efecto
+  const mixGain = ctx.createGain();
+  mixGain.gain.value = isEnabled ? (amount / 100) * 1.5 : 0;
+
+  const merger = ctx.createGain();
+
+  // Dry path
+  inputNode.connect(merger);
+
+  // Wet path
+  inputNode.connect(lpf);
+  lpf.connect(hump);
+  hump.connect(saturator);
+  saturator.connect(comp);
+  comp.connect(mixGain);
+  mixGain.connect(merger);
+
+  return {
+    output: merger,
+    hump: hump,
+    mixGain: mixGain,
+  };
+}
 
 // Función para crear filtros LR o Butterworth parametrizables
 function createFilter({
@@ -146,20 +218,21 @@ const main = () => {
     bands[index].gain.value = item.vol;
   });
 
-  // Configuración de Control de Tono (Simil Poweramp)
-  // LowShelf para graves profundos
-  bassToneNode = ctx.createBiquadFilter();
-  bassToneNode.type = "lowshelf";
-  bassToneNode.frequency.value = 80; // Frecuencia para graves más profundos (simil Poweramp)
-  bassToneNode.gain.value = toneParams.bassGain;
+  // Treble Air Node (Claridad)
+  trebleAirNode = ctx.createBiquadFilter();
+  trebleAirNode.type = "highshelf";
+  trebleAirNode.frequency.value = 8000;
+  trebleAirNode.gain.value = processorParams.trebleEnabled ? (processorParams.trebleAir / 100) * 12 : 0;
 
-  // HighShelf para agudos
-  trebleToneNode = ctx.createBiquadFilter();
-  trebleToneNode.type = "highshelf";
-  trebleToneNode.frequency.value = 5000; // Frecuencia típica para claridad
-  trebleToneNode.gain.value = toneParams.trebleGain;
+  // Master Limiter (Evitar saturación)
+  masterLimiter = ctx.createDynamicsCompressor();
+  masterLimiter.threshold.value = -1;
+  masterLimiter.knee.value = 0;
+  masterLimiter.ratio.value = 20;
+  masterLimiter.attack.value = 0.003;
+  masterLimiter.release.value = 0.1;
 
-  // filtro pasa bajo crossover
+  // filtro crossover
   lowFilter = createFilter({
     ctx,
     filterType: "LR",
@@ -168,7 +241,6 @@ const main = () => {
     type: "lowpass",
   });
 
-  // filtro pasa alto crossover
   hightFilter = createFilter({
     ctx,
     filterType: "LR",
@@ -183,10 +255,8 @@ const main = () => {
 
   gainHight = ctx.createGain();
   gainHight.gain.value = gananciaAlta;
-  // separar los canales
-  let splitter = ctx.createChannelSplitter(2);
 
-  // unir los canales
+  let splitter = ctx.createChannelSplitter(2);
   let merger = ctx.createChannelMerger(2);
 
   gainLow.connect(lowFilter.input);
@@ -196,7 +266,6 @@ const main = () => {
     bands[i - 1].connect(bands[i]);
   }
 
-  // crear splitter y merge para poder separar los dos canales L y R
   const splitterRight = ctx.createChannelSplitter(2);
   const mergeRight = ctx.createChannelMerger(2);
 
@@ -217,16 +286,21 @@ const main = () => {
   mergeLeft.connect(merge, 0, 0);
   mergeRight.connect(merge, 0, 1);
 
-  // Conexión del grafo: media -> EQ -> Tone Control -> Crossover
+  // Cadena: Media -> EQ -> Treble Air -> Splitter
   merge.connect(bands[0]);
-  bands[frecuencias.length - 1].connect(bassToneNode);
-  bassToneNode.connect(trebleToneNode);
-  trebleToneNode.connect(splitter);
+  bands[frecuencias.length - 1].connect(trebleAirNode);
+  trebleAirNode.connect(splitter);
 
   splitter.connect(gainLow, 0);
   splitter.connect(gainHight, 1);
 
-  lowFilter.output.connect(merger, 0, 0);
+  // Procesador de bajo aplicado a la rama de bajos
+  bassProcessorNode = createDeepBassNode(ctx, lowFilter.output, {
+    amount: processorParams.bassBody,
+    enabled: processorParams.bassEnabled
+  });
+
+  bassProcessorNode.output.connect(merger, 0, 0);
   hightFilter.output.connect(merger, 0, 1);
 
   let lowCutFilter = Array(4)
@@ -245,7 +319,10 @@ const main = () => {
       filter.connect(lowCutFilter[index + 1]);
     }
   });
-  lowCutFilter[lowCutFilter.length - 1].connect(ctx.destination);
+
+  // Limiter final
+  lowCutFilter[lowCutFilter.length - 1].connect(masterLimiter);
+  masterLimiter.connect(ctx.destination);
 };
 
 const setDefaultValue = () => {
@@ -261,37 +338,22 @@ const setDefaultValue = () => {
   });
   frecuencias = [...old];
 
-  if (!localStorage.getItem("frecuenciaBaja")) {
-    localStorage.setItem("frecuenciaBaja", 85);
-  }
+  if (!localStorage.getItem("frecuenciaBaja")) localStorage.setItem("frecuenciaBaja", 85);
+  if (!localStorage.getItem("gananciaBaja")) localStorage.setItem("gananciaBaja", 1);
+  if (!localStorage.getItem("frecuenciaAlta")) localStorage.setItem("frecuenciaAlta", 85);
+  if (!localStorage.getItem("gananciaAlta")) localStorage.setItem("gananciaAlta", 1);
+  if (!localStorage.getItem("isActive")) localStorage.setItem("isActive", true);
 
-  if (!localStorage.getItem("gananciaBaja")) {
-    localStorage.setItem("gananciaBaja", 1);
-  }
+  if (localStorage.getItem("processorBassBody") === null) localStorage.setItem("processorBassBody", 0);
+  if (localStorage.getItem("processorTrebleAir") === null) localStorage.setItem("processorTrebleAir", 0);
+  if (localStorage.getItem("processorBassEnabled") === null) localStorage.setItem("processorBassEnabled", true);
+  if (localStorage.getItem("processorTrebleEnabled") === null) localStorage.setItem("processorTrebleEnabled", true);
 
-  if (!localStorage.getItem("frecuenciaAlta")) {
-    localStorage.setItem("frecuenciaAlta", 85);
-  }
-
-  if (!localStorage.getItem("gananciaAlta")) {
-    localStorage.setItem("gananciaAlta", 1);
-  }
-
-  if (!localStorage.getItem("isActive")) {
-    localStorage.setItem("isActive", true);
-  }
-
-  // Inicialización de tonos
-  if (localStorage.getItem("toneBassGain") === null) {
-    localStorage.setItem("toneBassGain", 0);
-  }
-  if (localStorage.getItem("toneTrebleGain") === null) {
-    localStorage.setItem("toneTrebleGain", 0);
-  }
-
-  toneParams = {
-    bassGain: parseFloat(localStorage.getItem("toneBassGain")),
-    trebleGain: parseFloat(localStorage.getItem("toneTrebleGain")),
+  processorParams = {
+    bassBody: parseFloat(localStorage.getItem("processorBassBody")),
+    trebleAir: parseFloat(localStorage.getItem("processorTrebleAir")),
+    bassEnabled: localStorage.getItem("processorBassEnabled") !== "false",
+    trebleEnabled: localStorage.getItem("processorTrebleEnabled") !== "false",
   };
 };
 
@@ -301,20 +363,13 @@ const resetFrequency = (index) => {
     return { ...frequency, vol: 0 };
   });
   frecuencias = [...old];
-
-  let oldBands = bands.map((band) => {
-    if (band.gain && band.gain.value) {
-      band.gain.value = 0;
-    }
-    return band;
+  bands.forEach((band) => {
+    if (band.gain && band.gain.value) band.gain.value = 0;
   });
-
-  bands = [...oldBands];
 };
 
 // listen for events
 chrome.runtime.onMessage.addListener(function (request, sender, sendResponse) {
-  console.log(request, "in onMessage");
   if (request.action === "load-main") {
     setDefaultValue();
     main();
@@ -333,9 +388,11 @@ chrome.runtime.onMessage.addListener(function (request, sender, sendResponse) {
     });
     frecuencias = [...old];
 
-    toneParams = {
-      bassGain: parseFloat(localStorage.getItem("toneBassGain")) || 0,
-      trebleGain: parseFloat(localStorage.getItem("toneTrebleGain")) || 0,
+    processorParams = {
+      bassBody: parseFloat(localStorage.getItem("processorBassBody")) || 0,
+      trebleAir: parseFloat(localStorage.getItem("processorTrebleAir")) || 0,
+      bassEnabled: localStorage.getItem("processorBassEnabled") !== "false",
+      trebleEnabled: localStorage.getItem("processorTrebleEnabled") !== "false",
     };
 
     chrome.runtime.sendMessage({
@@ -346,7 +403,7 @@ chrome.runtime.onMessage.addListener(function (request, sender, sendResponse) {
       frecuenciaAlta,
       frecuencias: [...old],
       isActive: isActive,
-      toneParams: toneParams,
+      processorParams: processorParams,
     });
   }
 
@@ -362,17 +419,13 @@ chrome.runtime.onMessage.addListener(function (request, sender, sendResponse) {
 
   if (request.action === "changeLowFrecuency") {
     frecuenciaBaja = request.value;
-    lowFilter?.filters?.forEach(
-      (filter) => (filter.frequency.value = request.value),
-    );
+    lowFilter?.filters?.forEach((f) => (f.frequency.value = request.value));
     localStorage.setItem("frecuenciaBaja", frecuenciaBaja);
   }
 
   if (request.action === "changeHightFrecuency") {
     frecuenciaAlta = request.value;
-    hightFilter?.filters?.forEach(
-      (filter) => (filter.frequency.value = request.value),
-    );
+    hightFilter?.filters?.forEach((f) => (f.frequency.value = request.value));
     localStorage.setItem("frecuenciaAlta", frecuenciaAlta);
   }
 
@@ -390,48 +443,50 @@ chrome.runtime.onMessage.addListener(function (request, sender, sendResponse) {
 
   if (request.action === "changeBandFrecuency") {
     const { value, frecuency } = request;
-
-    let oldFrecuencies = frecuencias.map((item) => {
-      if (item.frecuencia === frecuency) {
-        return { ...item, vol: value };
-      }
-      return item;
+    frecuencias = frecuencias.map((item) => item.frecuencia === frecuency ? { ...item, vol: value } : item);
+    bands.forEach((band) => {
+      if (band.frequency.value === frecuency) band.gain.value = value;
     });
-    frecuencias = [...oldFrecuencies];
-    let oldBands = bands.map((band) => {
-      if (band.frequency.value === frecuency) {
-        band.gain.value = value;
-        return band;
-      }
-      return band;
-    });
-    bands = [...oldBands];
-
     localStorage.setItem(`vol-frecuencia-${frecuency}`, value);
   }
 
-  // Mensajes para Control de Tono
-  if (request.action === "changeBassTone") {
-    toneParams.bassGain = parseFloat(request.value);
-    localStorage.setItem("toneBassGain", toneParams.bassGain);
-    if (bassToneNode) {
-      bassToneNode.gain.value = toneParams.bassGain;
+  if (request.action === "changeBassBody") {
+    processorParams.bassBody = parseFloat(request.value);
+    localStorage.setItem("processorBassBody", processorParams.bassBody);
+    if (bassProcessorNode && processorParams.bassEnabled) {
+      bassProcessorNode.hump.gain.value = (processorParams.bassBody / 100) * 10;
+      bassProcessorNode.mixGain.gain.value = (processorParams.bassBody / 100) * 1.5;
     }
   }
 
-  if (request.action === "changeTrebleTone") {
-    toneParams.trebleGain = parseFloat(request.value);
-    localStorage.setItem("toneTrebleGain", toneParams.trebleGain);
-    if (trebleToneNode) {
-      trebleToneNode.gain.value = toneParams.trebleGain;
+  if (request.action === "changeTrebleAir") {
+    processorParams.trebleAir = parseFloat(request.value);
+    localStorage.setItem("processorTrebleAir", processorParams.trebleAir);
+    if (trebleAirNode && processorParams.trebleEnabled) {
+      trebleAirNode.gain.value = (processorParams.trebleAir / 100) * 12;
+    }
+  }
+
+  if (request.action === "toggleBassBody") {
+    processorParams.bassEnabled = request.value;
+    localStorage.setItem("processorBassEnabled", processorParams.bassEnabled);
+    if (bassProcessorNode) {
+      bassProcessorNode.hump.gain.value = processorParams.bassEnabled ? (processorParams.bassBody / 100) * 10 : 0;
+      bassProcessorNode.mixGain.gain.value = processorParams.bassEnabled ? (processorParams.bassBody / 100) * 1.5 : 0;
+    }
+  }
+
+  if (request.action === "toggleTrebleAir") {
+    processorParams.trebleEnabled = request.value;
+    localStorage.setItem("processorTrebleEnabled", processorParams.trebleEnabled);
+    if (trebleAirNode) {
+      trebleAirNode.gain.value = processorParams.trebleEnabled ? (processorParams.trebleAir / 100) * 12 : 0;
     }
   }
 });
 
 function getLowCut() {
   const lowCut = localStorage.getItem("lowCutFrequency");
-  if (isNaN(Number(lowCut))) {
-    return 30;
-  }
+  if (isNaN(Number(lowCut))) return 30;
   return Number(lowCut);
 }
