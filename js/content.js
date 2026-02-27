@@ -92,14 +92,10 @@ function createBBELowNode(ctx, inputNode, options = {}) {
     ? Math.pow(10, bassBoostGain / 20) - 1
     : 0;
 
-  const delay = ctx.createDelay(0.1);
-  delay.delayTime.value = 0.001; // 1ms
-
   // Arquitectura:
   // input -> dry path -> merger
   // input -> filter -> lowContourGainNode -> merger
   // input -> bassBoostFilter -> bassBoostGainNode -> merger
-  // merger -> delay
 
   inputNode.connect(merger);
   inputNode.connect(filter);
@@ -110,10 +106,8 @@ function createBBELowNode(ctx, inputNode, options = {}) {
   bassBoostFilter.connect(bassBoostGainNode);
   bassBoostGainNode.connect(merger);
 
-  merger.connect(delay);
-
   return {
-    output: delay,
+    output: merger,
     lowContourGainNode: lowContourGainNode,
     bassBoostGainNode: bassBoostGainNode,
   };
