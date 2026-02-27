@@ -44,113 +44,127 @@ let isActive;
 // variables para los nodos de ganancias de bajas y altas
 let gainLow;
 let gainHight;
-// let lowPassFilter;
-// let hightPassFilter;
 
-// variables para los nodos de BBE Sonic Maximizer
-let bbeLowNode;
-let bbeProcessNode;
+// variables para los nodos de Aphex
+let exciterNode;
+let bigBottomNode;
 
-// Parámetros BBE
-let bbeParams = {
-  lowContour: 4,
-  bassBoost: 4,
-  process: 3,
-  lowEnabled: true,
-  processEnabled: true,
+// Parámetros Aphex
+let aphexParams = {
+  exciterTune: 3000,
+  exciterMix: 0,
+  exciterEnabled: true,
+  bigBottomTune: 80,
+  bigBottomDrive: 0,
+  bigBottomMix: 0,
+  bigBottomEnabled: true,
 };
 
-// Función para crear el módulo BBE Low Contour
-function createBBELowNode(ctx, inputNode, options = {}) {
-  const lowContourGain = options.lowContourGain || 0;
-  const bassBoostGain = options.bassBoostGain || 0;
-  const isEnabled = options.enabled !== undefined ? options.enabled : true;
-  const frequency = 80; // Hz
-
-  // Crear nodos internos
-  const filter = ctx.createBiquadFilter();
-  filter.type = "lowpass";
-  filter.frequency.value = frequency;
-  filter.Q.value = 0.707;
-
-  const lowContourGainNode = ctx.createGain();
-  // Al ser paralelo, sumamos el efecto al original
-  lowContourGainNode.gain.value = isEnabled
-    ? Math.pow(10, lowContourGain / 20) - 1
-    : 0;
-
-  const merger = ctx.createGain(); // Sumador final del módulo
-
-  // Extra Bass Boost para tono más profundo
-  const bassBoostFilter = ctx.createBiquadFilter();
-  bassBoostFilter.type = "lowpass";
-  bassBoostFilter.frequency.value = 50; // Hz para profundidad sub
-  bassBoostFilter.Q.value = 0.707;
-
-  const bassBoostGainNode = ctx.createGain();
-  bassBoostGainNode.gain.value = isEnabled
-    ? Math.pow(10, bassBoostGain / 20) - 1
-    : 0;
-
-  const delay = ctx.createDelay(0.1);
-  delay.delayTime.value = 0.001; // 1ms
-
-  // Arquitectura:
-  // input -> dry path -> merger
-  // input -> filter -> lowContourGainNode -> merger
-  // input -> bassBoostFilter -> bassBoostGainNode -> merger
-  // merger -> delay
-
-  inputNode.connect(merger);
-  inputNode.connect(filter);
-  filter.connect(lowContourGainNode);
-  lowContourGainNode.connect(merger);
-
-  inputNode.connect(bassBoostFilter);
-  bassBoostFilter.connect(bassBoostGainNode);
-  bassBoostGainNode.connect(merger);
-
-  merger.connect(delay);
-
-  return {
-    output: delay,
-    lowContourGainNode: lowContourGainNode,
-    bassBoostGainNode: bassBoostGainNode,
-  };
+// Implementación simplificada de la curva para armónicos
+function makeExciterCurve() {
+  const n_samples = 44100;
+  const curve = new Float32Array(n_samples);
+  for (let i = 0; i < n_samples; i++) {
+    const x = (i * 2) / n_samples - 1;
+    // Generación asimétrica: para x > 0 aplicamos una no-linealidad suave
+    // Esto genera armónicos pares e impares
+    if (x > 0) {
+      curve[i] = Math.tanh(x * 1.5) / Math.tanh(1.5);
+    } else {
+      // Para x < 0, mantenemos más linealidad o una curva diferente
+      curve[i] = x * 0.9;
+    }
+  }
+  return curve;
 }
 
-// Función para crear el módulo BBE Process (Claridad)
-function createBBEProcessNode(ctx, inputNode, options = {}) {
-  const processGain = options.processGain || 0;
+// Función para crear el módulo Aphex Aural Exciter
+function createAphexExciterNode(ctx, inputNode, options = {}) {
+  const tune = options.tune || 3000;
+  const mix = options.mix || 0;
   const isEnabled = options.enabled !== undefined ? options.enabled : true;
-  const frequency = 4500; // Hz (entre 3kHz y 5kHz)
 
-  // Crear nodos internos
-  const filter = ctx.createBiquadFilter();
-  filter.type = "highpass";
-  filter.frequency.value = frequency;
-  filter.Q.value = 0.707;
+  // Filtro pasa-alto para el sidechain
+  const hpf = ctx.createBiquadFilter();
+  hpf.type = "highpass";
+  hpf.frequency.value = tune;
+  hpf.Q.value = 0.707;
 
-  const processGainNode = ctx.createGain();
-  // Convertir dB a ganancia lineal
-  processGainNode.gain.value = isEnabled
-    ? Math.pow(10, processGain / 20) - 1
-    : 0;
+  // Generador de armónicos
+  const shaper = ctx.createWaveShaper();
+  shaper.curve = makeExciterCurve();
+  shaper.oversample = "4x";
 
-  const merger = ctx.createGain(); // Sumador final del módulo
+  // Control de mezcla
+  const mixGain = ctx.createGain();
+  mixGain.gain.value = isEnabled ? Math.pow(10, mix / 20) - 1 : 0;
+  if (mixGain.gain.value < 0) mixGain.gain.value = 0;
 
-  // Arquitectura:
-  // input -> dry path -> merger
-  // input -> filter -> processGainNode -> merger
+  const merger = ctx.createGain();
 
+  // Conexión Dry
   inputNode.connect(merger);
-  inputNode.connect(filter);
-  filter.connect(processGainNode);
-  processGainNode.connect(merger);
+
+  // Conexión Sidechain (Exciter)
+  inputNode.connect(hpf);
+  hpf.connect(shaper);
+  shaper.connect(mixGain);
+  mixGain.connect(merger);
 
   return {
     output: merger,
-    processGainNode: processGainNode,
+    hpf: hpf,
+    mixGain: mixGain,
+  };
+}
+
+// Función para crear el módulo Aphex Big Bottom
+function createAphexBigBottomNode(ctx, inputNode, options = {}) {
+  const tune = options.tune || 80;
+  const drive = options.drive || 0;
+  const mix = options.mix || 0;
+  const isEnabled = options.enabled !== undefined ? options.enabled : true;
+
+  // Filtro pasa-bajo para el sidechain
+  const lpf = ctx.createBiquadFilter();
+  lpf.type = "lowpass";
+  lpf.frequency.value = tune;
+  lpf.Q.value = 0.707;
+
+  // Drive (intensidad de entrada al compresor)
+  const driveGain = ctx.createGain();
+  driveGain.gain.value = Math.pow(10, drive / 20);
+
+  // Compresor (Simulando comportamiento óptico)
+  const compressor = ctx.createDynamicsCompressor();
+  compressor.threshold.value = -24;
+  compressor.knee.value = 30;
+  compressor.ratio.value = 4;
+  compressor.attack.value = 0.01; // 10ms
+  compressor.release.value = 0.1; // 100ms
+
+  // Control de mezcla
+  const mixGain = ctx.createGain();
+  mixGain.gain.value = isEnabled ? Math.pow(10, mix / 20) - 1 : 0;
+  if (mixGain.gain.value < 0) mixGain.gain.value = 0;
+
+  const merger = ctx.createGain();
+
+  // Conexión Dry
+  inputNode.connect(merger);
+
+  // Conexión Sidechain (Big Bottom)
+  inputNode.connect(lpf);
+  lpf.connect(driveGain);
+  driveGain.connect(compressor);
+  compressor.connect(mixGain);
+  mixGain.connect(merger);
+
+  return {
+    output: merger,
+    lpf: lpf,
+    driveGain: driveGain,
+    mixGain: mixGain,
   };
 }
 
@@ -189,7 +203,6 @@ function createFilter({
 
 // Create filters
 let hightFilter;
-
 let lowFilter;
 
 const main = () => {
@@ -255,9 +268,6 @@ const main = () => {
     slope: 24,
     type: "lowpass",
   });
-  // lowPassFilter = ctx.createBiquadFilter();
-  // lowPassFilter.frequency.value = frecuenciaBaja;
-  // lowPassFilter.Q.value = Math.SQRT1_2;
 
   // filtro pasa alto
   hightFilter = createFilter({
@@ -267,10 +277,6 @@ const main = () => {
     slope: 24,
     type: "highpass",
   });
-  // hightPassFilter = ctx.createBiquadFilter();
-  // hightPassFilter.type = "highpass";
-  // hightPassFilter.frequency.value = frecuenciaAlta;
-  // hightPassFilter.Q.value = Math.SQRT1_2;
 
   // ganacia por canal
   gainLow = ctx.createGain();
@@ -291,59 +297,49 @@ const main = () => {
     bands[i - 1].connect(bands[i]);
   }
   // crear splitter y merge para poder separar los dos canales L y R
-  // para derecha altos
   const splitterRight = ctx.createChannelSplitter(2);
   const mergeRight = ctx.createChannelMerger(2);
 
-  // para izquierda bajos
   const splitterLeft = ctx.createChannelSplitter(2);
   const mergeLeft = ctx.createChannelMerger(2);
 
-  // merge une los dos canales ya en mono
   const merge = ctx.createChannelMerger(2);
 
-  // se conecta los dos separadores de canales al source
   mediaElement.connect(splitterLeft);
   mediaElement.connect(splitterRight);
 
-  // uniendo los dos canales L y R en uno solo que sera R
   splitterRight.connect(mergeRight, 0, 1);
   splitterRight.connect(mergeRight, 0, 1);
 
-  // uniendo los dos canales L y R en uno solo que sera L
   splitterLeft.connect(mergeLeft, 1, 0);
   splitterLeft.connect(mergeLeft, 1, 0);
 
-  // Uniendo los canales L y R antes modificados y
-  // dando un canal cada uno final
   mergeLeft.connect(merge, 0, 0);
   mergeRight.connect(merge, 0, 1);
 
   merge.connect(bands[0]);
 
-  // mediaElement.connect(bands[0]);
-  // asignando los filtros a cada canal
   bands[frecuencias.length - 1].connect(splitter);
 
   splitter.connect(gainLow, 0);
   splitter.connect(gainHight, 1);
 
-  // Integración del módulo BBE Sonic Maximizer
-  // Aplicamos Low Contour y Bass Boost a la banda de bajos
-  bbeLowNode = createBBELowNode(ctx, lowFilter.output, {
-    lowContourGain: bbeParams.lowContour,
-    bassBoostGain: bbeParams.bassBoost,
-    enabled: bbeParams.lowEnabled,
+  // Integración de Aphex Aural Exciter y Big Bottom
+  bigBottomNode = createAphexBigBottomNode(ctx, lowFilter.output, {
+    tune: aphexParams.bigBottomTune,
+    drive: aphexParams.bigBottomDrive,
+    mix: aphexParams.bigBottomMix,
+    enabled: aphexParams.bigBottomEnabled,
   });
 
-  // Aplicamos Process (realce de armónicos) a la banda de altos
-  bbeProcessNode = createBBEProcessNode(ctx, hightFilter.output, {
-    processGain: bbeParams.process,
-    enabled: bbeParams.processEnabled,
+  exciterNode = createAphexExciterNode(ctx, hightFilter.output, {
+    tune: aphexParams.exciterTune,
+    mix: aphexParams.exciterMix,
+    enabled: aphexParams.exciterEnabled,
   });
 
-  bbeLowNode.output.connect(merger, 0, 0);
-  bbeProcessNode.output.connect(merger, 0, 1);
+  bigBottomNode.output.connect(merger, 0, 0);
+  exciterNode.output.connect(merger, 0, 1);
 
   let lowCutFilter = Array(4)
     .fill()
@@ -397,29 +393,37 @@ const setDefaultValue = () => {
     localStorage.setItem("isActive", true);
   }
 
-  // Inicialización de parámetros BBE
-  if (localStorage.getItem("bbeLowContour") === null) {
-    localStorage.setItem("bbeLowContour", 4);
+  // Inicialización de parámetros Aphex
+  if (localStorage.getItem("aphexExciterTune") === null) {
+    localStorage.setItem("aphexExciterTune", 3000);
   }
-  if (localStorage.getItem("bbeBassBoost") === null) {
-    localStorage.setItem("bbeBassBoost", 4);
+  if (localStorage.getItem("aphexExciterMix") === null) {
+    localStorage.setItem("aphexExciterMix", 0);
   }
-  if (localStorage.getItem("bbeProcess") === null) {
-    localStorage.setItem("bbeProcess", 3);
+  if (localStorage.getItem("aphexExciterEnabled") === null) {
+    localStorage.setItem("aphexExciterEnabled", true);
   }
-  if (localStorage.getItem("bbeLowEnabled") === null) {
-    localStorage.setItem("bbeLowEnabled", true);
+  if (localStorage.getItem("aphexBigBottomTune") === null) {
+    localStorage.setItem("aphexBigBottomTune", 80);
   }
-  if (localStorage.getItem("bbeProcessEnabled") === null) {
-    localStorage.setItem("bbeProcessEnabled", true);
+  if (localStorage.getItem("aphexBigBottomDrive") === null) {
+    localStorage.setItem("aphexBigBottomDrive", 0);
+  }
+  if (localStorage.getItem("aphexBigBottomMix") === null) {
+    localStorage.setItem("aphexBigBottomMix", 0);
+  }
+  if (localStorage.getItem("aphexBigBottomEnabled") === null) {
+    localStorage.setItem("aphexBigBottomEnabled", true);
   }
 
-  bbeParams = {
-    lowContour: parseFloat(localStorage.getItem("bbeLowContour")),
-    bassBoost: parseFloat(localStorage.getItem("bbeBassBoost")),
-    process: parseFloat(localStorage.getItem("bbeProcess")),
-    lowEnabled: localStorage.getItem("bbeLowEnabled") !== "false",
-    processEnabled: localStorage.getItem("bbeProcessEnabled") !== "false",
+  aphexParams = {
+    exciterTune: parseFloat(localStorage.getItem("aphexExciterTune")),
+    exciterMix: parseFloat(localStorage.getItem("aphexExciterMix")),
+    exciterEnabled: localStorage.getItem("aphexExciterEnabled") !== "false",
+    bigBottomTune: parseFloat(localStorage.getItem("aphexBigBottomTune")),
+    bigBottomDrive: parseFloat(localStorage.getItem("aphexBigBottomDrive")),
+    bigBottomMix: parseFloat(localStorage.getItem("aphexBigBottomMix")),
+    bigBottomEnabled: localStorage.getItem("aphexBigBottomEnabled") !== "false",
   };
 };
 
@@ -461,12 +465,14 @@ chrome.runtime.onMessage.addListener(function (request, sender, sendResponse) {
     });
     frecuencias = [...old];
 
-    bbeParams = {
-      lowContour: parseFloat(localStorage.getItem("bbeLowContour")) || 4,
-      bassBoost: parseFloat(localStorage.getItem("bbeBassBoost")) || 4,
-      process: parseFloat(localStorage.getItem("bbeProcess")) || 3,
-      lowEnabled: localStorage.getItem("bbeLowEnabled") !== "false",
-      processEnabled: localStorage.getItem("bbeProcessEnabled") !== "false",
+    aphexParams = {
+      exciterTune: parseFloat(localStorage.getItem("aphexExciterTune")) || 3000,
+      exciterMix: parseFloat(localStorage.getItem("aphexExciterMix")) || 0,
+      exciterEnabled: localStorage.getItem("aphexExciterEnabled") !== "false",
+      bigBottomTune: parseFloat(localStorage.getItem("aphexBigBottomTune")) || 80,
+      bigBottomDrive: parseFloat(localStorage.getItem("aphexBigBottomDrive")) || 0,
+      bigBottomMix: parseFloat(localStorage.getItem("aphexBigBottomMix")) || 0,
+      bigBottomEnabled: localStorage.getItem("aphexBigBottomEnabled") !== "false",
     };
 
     chrome.runtime.sendMessage({
@@ -477,7 +483,7 @@ chrome.runtime.onMessage.addListener(function (request, sender, sendResponse) {
       frecuenciaAlta,
       frecuencias: [...old],
       isActive: isActive,
-      bbeParams: bbeParams,
+      aphexParams: aphexParams,
     });
   }
 
@@ -493,7 +499,6 @@ chrome.runtime.onMessage.addListener(function (request, sender, sendResponse) {
 
   if (request.action === "changeLowFrecuency") {
     frecuenciaBaja = request.value;
-    // lowPassFilter.frequency.value = request.value;
     lowFilter?.filters?.forEach(
       (filter) => (filter.frequency.value = request.value),
     );
@@ -502,7 +507,6 @@ chrome.runtime.onMessage.addListener(function (request, sender, sendResponse) {
 
   if (request.action === "changeHightFrecuency") {
     frecuenciaAlta = request.value;
-    // hightPassFilter.frequency.value = request.value;
     hightFilter?.filters?.forEach(
       (filter) => (filter.frequency.value = request.value),
     );
@@ -543,56 +547,64 @@ chrome.runtime.onMessage.addListener(function (request, sender, sendResponse) {
     localStorage.setItem(`vol-frecuencia-${frecuency}`, value);
   }
 
-  if (request.action === "changeBbeLowContour") {
-    bbeParams.lowContour = parseFloat(request.value);
-    localStorage.setItem("bbeLowContour", bbeParams.lowContour);
-    if (bbeLowNode && bbeParams.lowEnabled) {
-      bbeLowNode.lowContourGainNode.gain.value =
-        Math.pow(10, bbeParams.lowContour / 20) - 1;
+  // Mensajes para Aphex
+  if (request.action === "changeAphexExciterTune") {
+    aphexParams.exciterTune = parseFloat(request.value);
+    localStorage.setItem("aphexExciterTune", aphexParams.exciterTune);
+    if (exciterNode) {
+      exciterNode.hpf.frequency.value = aphexParams.exciterTune;
     }
   }
 
-  if (request.action === "changeBbeBassBoost") {
-    bbeParams.bassBoost = parseFloat(request.value);
-    localStorage.setItem("bbeBassBoost", bbeParams.bassBoost);
-    if (bbeLowNode && bbeParams.lowEnabled) {
-      bbeLowNode.bassBoostGainNode.gain.value =
-        Math.pow(10, bbeParams.bassBoost / 20) - 1;
+  if (request.action === "changeAphexExciterMix") {
+    aphexParams.exciterMix = parseFloat(request.value);
+    localStorage.setItem("aphexExciterMix", aphexParams.exciterMix);
+    if (exciterNode && aphexParams.exciterEnabled) {
+      let g = Math.pow(10, aphexParams.exciterMix / 20) - 1;
+      exciterNode.mixGain.gain.value = g < 0 ? 0 : g;
     }
   }
 
-  if (request.action === "changeBbeProcess") {
-    bbeParams.process = parseFloat(request.value);
-    localStorage.setItem("bbeProcess", bbeParams.process);
-    if (bbeProcessNode && bbeParams.processEnabled) {
-      bbeProcessNode.processGainNode.gain.value =
-        Math.pow(10, bbeParams.process / 20) - 1;
+  if (request.action === "toggleAphexExciter") {
+    aphexParams.exciterEnabled = request.value;
+    localStorage.setItem("aphexExciterEnabled", aphexParams.exciterEnabled);
+    if (exciterNode) {
+      let g = aphexParams.exciterEnabled ? Math.pow(10, aphexParams.exciterMix / 20) - 1 : 0;
+      exciterNode.mixGain.gain.value = g < 0 ? 0 : g;
     }
   }
 
-  if (request.action === "toggleBbeLow") {
-    bbeParams.lowEnabled = request.value;
-    localStorage.setItem("bbeLowEnabled", bbeParams.lowEnabled);
-    if (bbeLowNode) {
-      const gLow = bbeParams.lowEnabled
-        ? Math.pow(10, bbeParams.lowContour / 20) - 1
-        : 0;
-      const gBass = bbeParams.lowEnabled
-        ? Math.pow(10, bbeParams.bassBoost / 20) - 1
-        : 0;
-      bbeLowNode.lowContourGainNode.gain.value = gLow;
-      bbeLowNode.bassBoostGainNode.gain.value = gBass;
+  if (request.action === "changeAphexBigBottomTune") {
+    aphexParams.bigBottomTune = parseFloat(request.value);
+    localStorage.setItem("aphexBigBottomTune", aphexParams.bigBottomTune);
+    if (bigBottomNode) {
+      bigBottomNode.lpf.frequency.value = aphexParams.bigBottomTune;
     }
   }
 
-  if (request.action === "toggleBbeProcess") {
-    bbeParams.processEnabled = request.value;
-    localStorage.setItem("bbeProcessEnabled", bbeParams.processEnabled);
-    if (bbeProcessNode) {
-      const g = bbeParams.processEnabled
-        ? Math.pow(10, bbeParams.process / 20) - 1
-        : 0;
-      bbeProcessNode.processGainNode.gain.value = g;
+  if (request.action === "changeAphexBigBottomDrive") {
+    aphexParams.bigBottomDrive = parseFloat(request.value);
+    localStorage.setItem("aphexBigBottomDrive", aphexParams.bigBottomDrive);
+    if (bigBottomNode) {
+      bigBottomNode.driveGain.gain.value = Math.pow(10, aphexParams.bigBottomDrive / 20);
+    }
+  }
+
+  if (request.action === "changeAphexBigBottomMix") {
+    aphexParams.bigBottomMix = parseFloat(request.value);
+    localStorage.setItem("aphexBigBottomMix", aphexParams.bigBottomMix);
+    if (bigBottomNode && aphexParams.bigBottomEnabled) {
+      let g = Math.pow(10, aphexParams.bigBottomMix / 20) - 1;
+      bigBottomNode.mixGain.gain.value = g < 0 ? 0 : g;
+    }
+  }
+
+  if (request.action === "toggleAphexBigBottom") {
+    aphexParams.bigBottomEnabled = request.value;
+    localStorage.setItem("aphexBigBottomEnabled", aphexParams.bigBottomEnabled);
+    if (bigBottomNode) {
+      let g = aphexParams.bigBottomEnabled ? Math.pow(10, aphexParams.bigBottomMix / 20) - 1 : 0;
+      bigBottomNode.mixGain.gain.value = g < 0 ? 0 : g;
     }
   }
 });
