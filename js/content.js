@@ -44,113 +44,85 @@ let isActive;
 // variables para los nodos de ganancias de bajas y altas
 let gainLow;
 let gainHight;
-// let lowPassFilter;
-// let hightPassFilter;
 
-// variables para los nodos de BBE Sonic Maximizer
-let bbeLowNode;
-let bbeProcessNode;
+// Nodos del Procesador de Bajo y Tono
+let bassProcessorNode;
+let trebleAirNode;
+let masterLimiter;
 
-// Parámetros BBE
-let bbeParams = {
-  lowContour: 4,
-  bassBoost: 4,
-  process: 3,
-  lowEnabled: true,
-  processEnabled: true,
+let processorParams = {
+  bassBody: 0,
+  trebleAir: 0,
+  bassEnabled: true,
+  trebleEnabled: true,
 };
 
-// Función para crear el módulo BBE Low Contour
-function createBBELowNode(ctx, inputNode, options = {}) {
-  const lowContourGain = options.lowContourGain || 0;
-  const bassBoostGain = options.bassBoostGain || 0;
-  const isEnabled = options.enabled !== undefined ? options.enabled : true;
-  const frequency = 80; // Hz
-
-  // Crear nodos internos
-  const filter = ctx.createBiquadFilter();
-  filter.type = "lowpass";
-  filter.frequency.value = frequency;
-  filter.Q.value = 0.707;
-
-  const lowContourGainNode = ctx.createGain();
-  // Al ser paralelo, sumamos el efecto al original
-  lowContourGainNode.gain.value = isEnabled
-    ? Math.pow(10, lowContourGain / 20) - 1
-    : 0;
-
-  const merger = ctx.createGain(); // Sumador final del módulo
-
-  // Extra Bass Boost para tono más profundo
-  const bassBoostFilter = ctx.createBiquadFilter();
-  bassBoostFilter.type = "lowpass";
-  bassBoostFilter.frequency.value = 50; // Hz para profundidad sub
-  bassBoostFilter.Q.value = 0.707;
-
-  const bassBoostGainNode = ctx.createGain();
-  bassBoostGainNode.gain.value = isEnabled
-    ? Math.pow(10, bassBoostGain / 20) - 1
-    : 0;
-
-  const delay = ctx.createDelay(0.1);
-  delay.delayTime.value = 0.001; // 1ms
-
-  // Arquitectura:
-  // input -> dry path -> merger
-  // input -> filter -> lowContourGainNode -> merger
-  // input -> bassBoostFilter -> bassBoostGainNode -> merger
-  // merger -> delay
-
-  inputNode.connect(merger);
-  inputNode.connect(filter);
-  filter.connect(lowContourGainNode);
-  lowContourGainNode.connect(merger);
-
-  inputNode.connect(bassBoostFilter);
-  bassBoostFilter.connect(bassBoostGainNode);
-  bassBoostGainNode.connect(merger);
-
-  merger.connect(delay);
-
-  return {
-    output: delay,
-    lowContourGainNode: lowContourGainNode,
-    bassBoostGainNode: bassBoostGainNode,
-  };
+// Curva de saturación suave para dar "cuerpo" al bajo
+function makeBassSaturationCurve() {
+  const n_samples = 44100;
+  const curve = new Float32Array(n_samples);
+  for (let i = 0; i < n_samples; i++) {
+    const x = (i * 2) / n_samples - 1;
+    if (x > 0) {
+      curve[i] = Math.tanh(x * 1.2);
+    } else {
+      curve[i] = x * 0.8;
+    }
+  }
+  return curve;
 }
 
-// Función para crear el módulo BBE Process (Claridad)
-function createBBEProcessNode(ctx, inputNode, options = {}) {
-  const processGain = options.processGain || 0;
+// Función para crear el procesador de bajo profundo
+function createDeepBassNode(ctx, inputNode, options = {}) {
+  const amount = options.amount || 0;
   const isEnabled = options.enabled !== undefined ? options.enabled : true;
-  const frequency = 4500; // Hz (entre 3kHz y 5kHz)
 
-  // Crear nodos internos
-  const filter = ctx.createBiquadFilter();
-  filter.type = "highpass";
-  filter.frequency.value = frequency;
-  filter.Q.value = 0.707;
+  // Sidechain para el bajo
+  const lpf = ctx.createBiquadFilter();
+  lpf.type = "lowpass";
+  lpf.frequency.value = 150;
+  lpf.Q.value = 1.0;
 
-  const processGainNode = ctx.createGain();
-  // Convertir dB a ganancia lineal
-  processGainNode.gain.value = isEnabled
-    ? Math.pow(10, processGain / 20) - 1
-    : 0;
+  // Realce de sub-bajo (Thump)
+  const hump = ctx.createBiquadFilter();
+  hump.type = "peaking";
+  hump.frequency.value = 55;
+  hump.Q.value = 2.0;
+  hump.gain.value = isEnabled ? (amount / 100) * 10 : 0;
 
-  const merger = ctx.createGain(); // Sumador final del módulo
+  // Saturador (Cuerpo/Armónicos)
+  const saturator = ctx.createWaveShaper();
+  saturator.curve = makeBassSaturationCurve();
+  saturator.oversample = "4x";
 
-  // Arquitectura:
-  // input -> dry path -> merger
-  // input -> filter -> processGainNode -> merger
+  // Compresor de bajo para dar sustain/consistencia
+  const comp = ctx.createDynamicsCompressor();
+  comp.threshold.value = -20;
+  comp.ratio.value = 4;
+  comp.attack.value = 0.02;
+  comp.release.value = 0.15;
 
+  // Ganancia del efecto
+  const mixGain = ctx.createGain();
+  mixGain.gain.value = isEnabled ? (amount / 100) * 1.5 : 0;
+
+  const merger = ctx.createGain();
+
+  // Dry path
   inputNode.connect(merger);
-  inputNode.connect(filter);
-  filter.connect(processGainNode);
-  processGainNode.connect(merger);
+
+  // Wet path
+  inputNode.connect(lpf);
+  lpf.connect(hump);
+  hump.connect(saturator);
+  saturator.connect(comp);
+  comp.connect(mixGain);
+  mixGain.connect(merger);
 
   return {
     output: merger,
-    processGainNode: processGainNode,
+    hump: hump,
+    mixGain: mixGain,
   };
 }
 
@@ -189,7 +161,6 @@ function createFilter({
 
 // Create filters
 let hightFilter;
-
 let lowFilter;
 
 const main = () => {
@@ -247,7 +218,21 @@ const main = () => {
     bands[index].gain.value = item.vol;
   });
 
-  // filtro pasa bajo
+  // Treble Air Node (Claridad)
+  trebleAirNode = ctx.createBiquadFilter();
+  trebleAirNode.type = "highshelf";
+  trebleAirNode.frequency.value = 8000;
+  trebleAirNode.gain.value = processorParams.trebleEnabled ? (processorParams.trebleAir / 100) * 12 : 0;
+
+  // Master Limiter (Evitar saturación)
+  masterLimiter = ctx.createDynamicsCompressor();
+  masterLimiter.threshold.value = -1;
+  masterLimiter.knee.value = 0;
+  masterLimiter.ratio.value = 20;
+  masterLimiter.attack.value = 0.003;
+  masterLimiter.release.value = 0.1;
+
+  // filtro crossover
   lowFilter = createFilter({
     ctx,
     filterType: "LR",
@@ -255,11 +240,7 @@ const main = () => {
     slope: 24,
     type: "lowpass",
   });
-  // lowPassFilter = ctx.createBiquadFilter();
-  // lowPassFilter.frequency.value = frecuenciaBaja;
-  // lowPassFilter.Q.value = Math.SQRT1_2;
 
-  // filtro pasa alto
   hightFilter = createFilter({
     ctx,
     filterType: "LR",
@@ -267,10 +248,6 @@ const main = () => {
     slope: 24,
     type: "highpass",
   });
-  // hightPassFilter = ctx.createBiquadFilter();
-  // hightPassFilter.type = "highpass";
-  // hightPassFilter.frequency.value = frecuenciaAlta;
-  // hightPassFilter.Q.value = Math.SQRT1_2;
 
   // ganacia por canal
   gainLow = ctx.createGain();
@@ -278,10 +255,8 @@ const main = () => {
 
   gainHight = ctx.createGain();
   gainHight.gain.value = gananciaAlta;
-  // separar los canales
-  let splitter = ctx.createChannelSplitter(2);
 
-  // unir los canales
+  let splitter = ctx.createChannelSplitter(2);
   let merger = ctx.createChannelMerger(2);
 
   gainLow.connect(lowFilter.input);
@@ -290,60 +265,43 @@ const main = () => {
   for (i = 1; i < frecuencias.length; i++) {
     bands[i - 1].connect(bands[i]);
   }
-  // crear splitter y merge para poder separar los dos canales L y R
-  // para derecha altos
+
   const splitterRight = ctx.createChannelSplitter(2);
   const mergeRight = ctx.createChannelMerger(2);
 
-  // para izquierda bajos
   const splitterLeft = ctx.createChannelSplitter(2);
   const mergeLeft = ctx.createChannelMerger(2);
 
-  // merge une los dos canales ya en mono
   const merge = ctx.createChannelMerger(2);
 
-  // se conecta los dos separadores de canales al source
   mediaElement.connect(splitterLeft);
   mediaElement.connect(splitterRight);
 
-  // uniendo los dos canales L y R en uno solo que sera R
   splitterRight.connect(mergeRight, 0, 1);
   splitterRight.connect(mergeRight, 0, 1);
 
-  // uniendo los dos canales L y R en uno solo que sera L
   splitterLeft.connect(mergeLeft, 1, 0);
   splitterLeft.connect(mergeLeft, 1, 0);
 
-  // Uniendo los canales L y R antes modificados y
-  // dando un canal cada uno final
   mergeLeft.connect(merge, 0, 0);
   mergeRight.connect(merge, 0, 1);
 
+  // Cadena: Media -> EQ -> Treble Air -> Splitter
   merge.connect(bands[0]);
-
-  // mediaElement.connect(bands[0]);
-  // asignando los filtros a cada canal
-  bands[frecuencias.length - 1].connect(splitter);
+  bands[frecuencias.length - 1].connect(trebleAirNode);
+  trebleAirNode.connect(splitter);
 
   splitter.connect(gainLow, 0);
   splitter.connect(gainHight, 1);
 
-  // Integración del módulo BBE Sonic Maximizer
-  // Aplicamos Low Contour y Bass Boost a la banda de bajos
-  bbeLowNode = createBBELowNode(ctx, lowFilter.output, {
-    lowContourGain: bbeParams.lowContour,
-    bassBoostGain: bbeParams.bassBoost,
-    enabled: bbeParams.lowEnabled,
+  // Procesador de bajo aplicado a la rama de bajos
+  bassProcessorNode = createDeepBassNode(ctx, lowFilter.output, {
+    amount: processorParams.bassBody,
+    enabled: processorParams.bassEnabled
   });
 
-  // Aplicamos Process (realce de armónicos) a la banda de altos
-  bbeProcessNode = createBBEProcessNode(ctx, hightFilter.output, {
-    processGain: bbeParams.process,
-    enabled: bbeParams.processEnabled,
-  });
-
-  bbeLowNode.output.connect(merger, 0, 0);
-  bbeProcessNode.output.connect(merger, 0, 1);
+  bassProcessorNode.output.connect(merger, 0, 0);
+  hightFilter.output.connect(merger, 0, 1);
 
   let lowCutFilter = Array(4)
     .fill()
@@ -361,7 +319,10 @@ const main = () => {
       filter.connect(lowCutFilter[index + 1]);
     }
   });
-  lowCutFilter[lowCutFilter.length - 1].connect(ctx.destination);
+
+  // Limiter final
+  lowCutFilter[lowCutFilter.length - 1].connect(masterLimiter);
+  masterLimiter.connect(ctx.destination);
 };
 
 const setDefaultValue = () => {
@@ -377,49 +338,22 @@ const setDefaultValue = () => {
   });
   frecuencias = [...old];
 
-  if (!localStorage.getItem("frecuenciaBaja")) {
-    localStorage.setItem("frecuenciaBaja", 85);
-  }
+  if (!localStorage.getItem("frecuenciaBaja")) localStorage.setItem("frecuenciaBaja", 85);
+  if (!localStorage.getItem("gananciaBaja")) localStorage.setItem("gananciaBaja", 1);
+  if (!localStorage.getItem("frecuenciaAlta")) localStorage.setItem("frecuenciaAlta", 85);
+  if (!localStorage.getItem("gananciaAlta")) localStorage.setItem("gananciaAlta", 1);
+  if (!localStorage.getItem("isActive")) localStorage.setItem("isActive", true);
 
-  if (!localStorage.getItem("gananciaBaja")) {
-    localStorage.setItem("gananciaBaja", 1);
-  }
+  if (localStorage.getItem("processorBassBody") === null) localStorage.setItem("processorBassBody", 0);
+  if (localStorage.getItem("processorTrebleAir") === null) localStorage.setItem("processorTrebleAir", 0);
+  if (localStorage.getItem("processorBassEnabled") === null) localStorage.setItem("processorBassEnabled", true);
+  if (localStorage.getItem("processorTrebleEnabled") === null) localStorage.setItem("processorTrebleEnabled", true);
 
-  if (!localStorage.getItem("frecuenciaAlta")) {
-    localStorage.setItem("frecuenciaAlta", 85);
-  }
-
-  if (!localStorage.getItem("gananciaAlta")) {
-    localStorage.setItem("gananciaAlta", 1);
-  }
-
-  if (!localStorage.getItem("isActive")) {
-    localStorage.setItem("isActive", true);
-  }
-
-  // Inicialización de parámetros BBE
-  if (localStorage.getItem("bbeLowContour") === null) {
-    localStorage.setItem("bbeLowContour", 4);
-  }
-  if (localStorage.getItem("bbeBassBoost") === null) {
-    localStorage.setItem("bbeBassBoost", 4);
-  }
-  if (localStorage.getItem("bbeProcess") === null) {
-    localStorage.setItem("bbeProcess", 3);
-  }
-  if (localStorage.getItem("bbeLowEnabled") === null) {
-    localStorage.setItem("bbeLowEnabled", true);
-  }
-  if (localStorage.getItem("bbeProcessEnabled") === null) {
-    localStorage.setItem("bbeProcessEnabled", true);
-  }
-
-  bbeParams = {
-    lowContour: parseFloat(localStorage.getItem("bbeLowContour")),
-    bassBoost: parseFloat(localStorage.getItem("bbeBassBoost")),
-    process: parseFloat(localStorage.getItem("bbeProcess")),
-    lowEnabled: localStorage.getItem("bbeLowEnabled") !== "false",
-    processEnabled: localStorage.getItem("bbeProcessEnabled") !== "false",
+  processorParams = {
+    bassBody: parseFloat(localStorage.getItem("processorBassBody")),
+    trebleAir: parseFloat(localStorage.getItem("processorTrebleAir")),
+    bassEnabled: localStorage.getItem("processorBassEnabled") !== "false",
+    trebleEnabled: localStorage.getItem("processorTrebleEnabled") !== "false",
   };
 };
 
@@ -429,20 +363,13 @@ const resetFrequency = (index) => {
     return { ...frequency, vol: 0 };
   });
   frecuencias = [...old];
-
-  let oldBands = bands.map((band) => {
-    if (band.gain && band.gain.value) {
-      band.gain.value = 0;
-    }
-    return band;
+  bands.forEach((band) => {
+    if (band.gain && band.gain.value) band.gain.value = 0;
   });
-
-  bands = [...oldBands];
 };
 
 // listen for events
 chrome.runtime.onMessage.addListener(function (request, sender, sendResponse) {
-  console.log(request, "in onMessage");
   if (request.action === "load-main") {
     setDefaultValue();
     main();
@@ -461,12 +388,11 @@ chrome.runtime.onMessage.addListener(function (request, sender, sendResponse) {
     });
     frecuencias = [...old];
 
-    bbeParams = {
-      lowContour: parseFloat(localStorage.getItem("bbeLowContour")) || 4,
-      bassBoost: parseFloat(localStorage.getItem("bbeBassBoost")) || 4,
-      process: parseFloat(localStorage.getItem("bbeProcess")) || 3,
-      lowEnabled: localStorage.getItem("bbeLowEnabled") !== "false",
-      processEnabled: localStorage.getItem("bbeProcessEnabled") !== "false",
+    processorParams = {
+      bassBody: parseFloat(localStorage.getItem("processorBassBody")) || 0,
+      trebleAir: parseFloat(localStorage.getItem("processorTrebleAir")) || 0,
+      bassEnabled: localStorage.getItem("processorBassEnabled") !== "false",
+      trebleEnabled: localStorage.getItem("processorTrebleEnabled") !== "false",
     };
 
     chrome.runtime.sendMessage({
@@ -477,7 +403,7 @@ chrome.runtime.onMessage.addListener(function (request, sender, sendResponse) {
       frecuenciaAlta,
       frecuencias: [...old],
       isActive: isActive,
-      bbeParams: bbeParams,
+      processorParams: processorParams,
     });
   }
 
@@ -493,19 +419,13 @@ chrome.runtime.onMessage.addListener(function (request, sender, sendResponse) {
 
   if (request.action === "changeLowFrecuency") {
     frecuenciaBaja = request.value;
-    // lowPassFilter.frequency.value = request.value;
-    lowFilter?.filters?.forEach(
-      (filter) => (filter.frequency.value = request.value),
-    );
+    lowFilter?.filters?.forEach((f) => (f.frequency.value = request.value));
     localStorage.setItem("frecuenciaBaja", frecuenciaBaja);
   }
 
   if (request.action === "changeHightFrecuency") {
     frecuenciaAlta = request.value;
-    // hightPassFilter.frequency.value = request.value;
-    hightFilter?.filters?.forEach(
-      (filter) => (filter.frequency.value = request.value),
-    );
+    hightFilter?.filters?.forEach((f) => (f.frequency.value = request.value));
     localStorage.setItem("frecuenciaAlta", frecuenciaAlta);
   }
 
@@ -523,84 +443,50 @@ chrome.runtime.onMessage.addListener(function (request, sender, sendResponse) {
 
   if (request.action === "changeBandFrecuency") {
     const { value, frecuency } = request;
-
-    let oldFrecuencies = frecuencias.map((item) => {
-      if (item.frecuencia === frecuency) {
-        return { ...item, vol: value };
-      }
-      return item;
+    frecuencias = frecuencias.map((item) => item.frecuencia === frecuency ? { ...item, vol: value } : item);
+    bands.forEach((band) => {
+      if (band.frequency.value === frecuency) band.gain.value = value;
     });
-    frecuencias = [...oldFrecuencies];
-    let oldBands = bands.map((band) => {
-      if (band.frequency.value === frecuency) {
-        band.gain.value = value;
-        return band;
-      }
-      return band;
-    });
-    bands = [...oldBands];
-
     localStorage.setItem(`vol-frecuencia-${frecuency}`, value);
   }
 
-  if (request.action === "changeBbeLowContour") {
-    bbeParams.lowContour = parseFloat(request.value);
-    localStorage.setItem("bbeLowContour", bbeParams.lowContour);
-    if (bbeLowNode && bbeParams.lowEnabled) {
-      bbeLowNode.lowContourGainNode.gain.value =
-        Math.pow(10, bbeParams.lowContour / 20) - 1;
+  if (request.action === "changeBassBody") {
+    processorParams.bassBody = parseFloat(request.value);
+    localStorage.setItem("processorBassBody", processorParams.bassBody);
+    if (bassProcessorNode && processorParams.bassEnabled) {
+      bassProcessorNode.hump.gain.value = (processorParams.bassBody / 100) * 10;
+      bassProcessorNode.mixGain.gain.value = (processorParams.bassBody / 100) * 1.5;
     }
   }
 
-  if (request.action === "changeBbeBassBoost") {
-    bbeParams.bassBoost = parseFloat(request.value);
-    localStorage.setItem("bbeBassBoost", bbeParams.bassBoost);
-    if (bbeLowNode && bbeParams.lowEnabled) {
-      bbeLowNode.bassBoostGainNode.gain.value =
-        Math.pow(10, bbeParams.bassBoost / 20) - 1;
+  if (request.action === "changeTrebleAir") {
+    processorParams.trebleAir = parseFloat(request.value);
+    localStorage.setItem("processorTrebleAir", processorParams.trebleAir);
+    if (trebleAirNode && processorParams.trebleEnabled) {
+      trebleAirNode.gain.value = (processorParams.trebleAir / 100) * 12;
     }
   }
 
-  if (request.action === "changeBbeProcess") {
-    bbeParams.process = parseFloat(request.value);
-    localStorage.setItem("bbeProcess", bbeParams.process);
-    if (bbeProcessNode && bbeParams.processEnabled) {
-      bbeProcessNode.processGainNode.gain.value =
-        Math.pow(10, bbeParams.process / 20) - 1;
+  if (request.action === "toggleBassBody") {
+    processorParams.bassEnabled = request.value;
+    localStorage.setItem("processorBassEnabled", processorParams.bassEnabled);
+    if (bassProcessorNode) {
+      bassProcessorNode.hump.gain.value = processorParams.bassEnabled ? (processorParams.bassBody / 100) * 10 : 0;
+      bassProcessorNode.mixGain.gain.value = processorParams.bassEnabled ? (processorParams.bassBody / 100) * 1.5 : 0;
     }
   }
 
-  if (request.action === "toggleBbeLow") {
-    bbeParams.lowEnabled = request.value;
-    localStorage.setItem("bbeLowEnabled", bbeParams.lowEnabled);
-    if (bbeLowNode) {
-      const gLow = bbeParams.lowEnabled
-        ? Math.pow(10, bbeParams.lowContour / 20) - 1
-        : 0;
-      const gBass = bbeParams.lowEnabled
-        ? Math.pow(10, bbeParams.bassBoost / 20) - 1
-        : 0;
-      bbeLowNode.lowContourGainNode.gain.value = gLow;
-      bbeLowNode.bassBoostGainNode.gain.value = gBass;
-    }
-  }
-
-  if (request.action === "toggleBbeProcess") {
-    bbeParams.processEnabled = request.value;
-    localStorage.setItem("bbeProcessEnabled", bbeParams.processEnabled);
-    if (bbeProcessNode) {
-      const g = bbeParams.processEnabled
-        ? Math.pow(10, bbeParams.process / 20) - 1
-        : 0;
-      bbeProcessNode.processGainNode.gain.value = g;
+  if (request.action === "toggleTrebleAir") {
+    processorParams.trebleEnabled = request.value;
+    localStorage.setItem("processorTrebleEnabled", processorParams.trebleEnabled);
+    if (trebleAirNode) {
+      trebleAirNode.gain.value = processorParams.trebleEnabled ? (processorParams.trebleAir / 100) * 12 : 0;
     }
   }
 });
 
 function getLowCut() {
   const lowCut = localStorage.getItem("lowCutFrequency");
-  if (isNaN(Number(lowCut))) {
-    return 30;
-  }
+  if (isNaN(Number(lowCut))) return 30;
   return Number(lowCut);
 }

@@ -43,43 +43,19 @@ document.querySelector(
   ".copyright"
 ).innerHTML = `&copy; DENIS VALLADARES ${new Date().getFullYear()}`;
 
-/**
- * Funcion para quitar o mostrar decimales de un
- * numero pasado por parametros
- * @param {Number} number
- * @param {Number} numDecimal numero de decimales que desea mostrar
- * @returns Number
- */
 const deleteDecimal = (number, numDecimal = 0) => {
-  if (number % 1 == 0) {
-    return Number(number);
-  } else {
-    return Number(number).toFixed(numDecimal);
-  }
+  if (number % 1 == 0) return Number(number);
+  return Number(number).toFixed(numDecimal);
 };
 
-/**
- * Funcion que crea las barras de cada frecuencia
- * definida en el array anterior
- */
 let createBarraBand = () => {
   let contenedorFrecuencias = document.querySelector(".contenido");
   let html = ``;
   frecuencias.forEach((item, i) => {
     html += `
         <div class="bar">
-            <span style="text-align: center; width: 80px; position: relative;left: -13px;" id="span-vol-${
-              i + 1
-            }">Vol: ${deleteDecimal(item.vol, 2)}</span>
-            <input 
-                type="range" 
-                min="-12" 
-                max="12" 
-                step="0.00001" 
-                class="range-vertical"
-                value=${item.vol}
-                id="band-${i + 1}"
-            >
+            <span style="text-align: center; width: 80px; position: relative;left: -13px;" id="span-vol-${i + 1}">Vol: ${deleteDecimal(item.vol, 2)}</span>
+            <input type="range" min="-12" max="12" step="0.00001" class="range-vertical" value=${item.vol} id="band-${i + 1}">
             <span>${item.frecuencia}Hz</span>
           </div>
     `;
@@ -93,23 +69,18 @@ window.addEventListener("DOMContentLoaded", () => {
   const mostrarFrecuenciaBaja = document.getElementById("verFrecuenciaBaja");
   const mostrarGananciaBaja = document.getElementById("verGananciaBaja");
 
-  // Altas frecuencias controles
   const inputFrecuenciaAlta = document.getElementById("frecuenciaAlta");
   const mostrarFrecuenciaAlta = document.getElementById("verFrecuenciaAlta");
   const inputGananciaAlta = document.getElementById("gananciaAlta");
   const mostrarGananciaAlta = document.getElementById("verGananciaAlta");
 
-  // BBE Controles UI
-  const inputBbeLowContour = document.getElementById("bbeLowContour");
-  const inputBbeBassBoost = document.getElementById("bbeBassBoost");
-  const inputBbeProcess = document.getElementById("bbeProcess");
-  const checkBbeLow = document.getElementById("enableBBELow");
-  const checkBbeProcess = document.getElementById("enableBBEProcess");
-  const verBbeLowContour = document.getElementById("verBbeLowContour");
-  const verBbeBassBoost = document.getElementById("verBbeBassBoost");
-  const verBbeProcess = document.getElementById("verBbeProcess");
+  const inputBassBody = document.getElementById("bassBody");
+  const inputTrebleAir = document.getElementById("trebleAir");
+  const checkBassBody = document.getElementById("enableBassBody");
+  const checkTrebleAir = document.getElementById("enableTrebleAir");
+  const verBassBody = document.getElementById("verBassBody");
+  const verTrebleAir = document.getElementById("verTrebleAir");
 
-  // container del modal
   const modal = document.querySelector(".modal-container");
   const close = document.querySelector(".close");
   const open = document.querySelector(".iconEq");
@@ -127,235 +98,114 @@ window.addEventListener("DOMContentLoaded", () => {
     });
   });
 
-  // creando las barras de ecualizacion
   createBarraBand();
 
-  // mostrar el modal
-  open.addEventListener("click", (e) => {
-    modal.style.display = "block";
-  });
+  open.addEventListener("click", () => modal.style.display = "block");
+  close.addEventListener("click", () => modal.style.display = "none");
+  btnCerrar.addEventListener("click", () => modal.style.display = "none");
 
-  // cerrar el modal desde la "X"
-  close.addEventListener("click", (e) => {
-    modal.style.display = "none";
-  });
-
-  // cerrar modal desde el boton de cerrar
-  btnCerrar.addEventListener("click", (e) => {
-    modal.style.display = "none";
-  });
-
-  // resetear todo el ecualizador
-  btnReset.addEventListener("click", (e) => {
+  btnReset.addEventListener("click", () => {
     chrome.tabs.query({ active: true, currentWindow: true }, function (tabs) {
-      chrome.tabs.sendMessage(tabs[0].id, {
-        action: "resetFrecuency",
-      });
+      chrome.tabs.sendMessage(tabs[0].id, { action: "resetFrecuency" });
     });
     frecuencias.forEach((item, i) => {
-      document.getElementById(`band-${i + 1}`).value = 0; // modificando el input para reflejar el cambio
-      document.getElementById(`span-vol-${i + 1}`).innerText = `Vol: 0`; // modificando el span para reflejar que cambio el volumen
+      document.getElementById(`band-${i + 1}`).value = 0;
+      document.getElementById(`span-vol-${i + 1}`).innerText = `Vol: 0`;
     });
   });
 
-  // handle change of inputs range
-
   inputFrecuenciaBaja.addEventListener("change", (e) => {
-    try {
-      mostrarFrecuenciaBaja.innerText = deleteDecimal(e.target.value);
-      chrome.tabs.query({ active: true, currentWindow: true }, function (tabs) {
-        chrome.tabs.sendMessage(tabs[0].id, {
-          action: "changeLowFrecuency",
-          value: e.target.value,
-        });
-      });
-    } catch (error) {
-      console.log(error);
-    }
+    mostrarFrecuenciaBaja.innerText = deleteDecimal(e.target.value);
+    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+      chrome.tabs.sendMessage(tabs[0].id, { action: "changeLowFrecuency", value: e.target.value });
+    });
   });
 
   inputFrecuenciaAlta.addEventListener("change", (e) => {
-    try {
-      mostrarFrecuenciaAlta.innerText = deleteDecimal(e.target.value);
-      chrome.tabs.query({ active: true, currentWindow: true }, function (tabs) {
-        chrome.tabs.sendMessage(tabs[0].id, {
-          action: "changeHightFrecuency",
-          value: e.target.value,
-        });
-      });
-    } catch (error) {
-      console.log(error);
-    }
+    mostrarFrecuenciaAlta.innerText = deleteDecimal(e.target.value);
+    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+      chrome.tabs.sendMessage(tabs[0].id, { action: "changeHightFrecuency", value: e.target.value });
+    });
   });
 
   inputGananciaBaja.addEventListener("change", (e) => {
-    try {
-      mostrarGananciaBaja.innerText = deleteDecimal(e.target.value, 2);
-      chrome.tabs.query({ active: true, currentWindow: true }, function (tabs) {
-        chrome.tabs.sendMessage(tabs[0].id, {
-          action: "changeLowGain",
-          value: e.target.value,
-        });
-      });
-    } catch (error) {
-      console.log(error);
-    }
+    mostrarGananciaBaja.innerText = deleteDecimal(e.target.value, 2);
+    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+      chrome.tabs.sendMessage(tabs[0].id, { action: "changeLowGain", value: e.target.value });
+    });
   });
 
   inputGananciaAlta.addEventListener("change", (e) => {
-    try {
-      mostrarGananciaAlta.innerText = deleteDecimal(e.target.value, 2);
-      chrome.tabs.query({ active: true, currentWindow: true }, function (tabs) {
-        chrome.tabs.sendMessage(tabs[0].id, {
-          action: "changeHightGain",
-          value: e.target.value,
-        });
-      });
-    } catch (error) {
-      console.log(error);
-    }
-  });
-
-  // Event Listeners para BBE
-  inputBbeLowContour.addEventListener("input", (e) => {
-    verBbeLowContour.innerText = parseFloat(e.target.value).toFixed(1);
-    chrome.tabs.query({ active: true, currentWindow: true }, function (tabs) {
-      chrome.tabs.sendMessage(tabs[0].id, {
-        action: "changeBbeLowContour",
-        value: e.target.value,
-      });
+    mostrarGananciaAlta.innerText = deleteDecimal(e.target.value, 2);
+    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+      chrome.tabs.sendMessage(tabs[0].id, { action: "changeHightGain", value: e.target.value });
     });
   });
 
-  inputBbeBassBoost.addEventListener("input", (e) => {
-    verBbeBassBoost.innerText = parseFloat(e.target.value).toFixed(1);
-    chrome.tabs.query({ active: true, currentWindow: true }, function (tabs) {
-      chrome.tabs.sendMessage(tabs[0].id, {
-        action: "changeBbeBassBoost",
-        value: e.target.value,
-      });
+  inputBassBody.addEventListener("input", (e) => {
+    verBassBody.innerText = e.target.value;
+    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+      chrome.tabs.sendMessage(tabs[0].id, { action: "changeBassBody", value: e.target.value });
     });
   });
 
-  inputBbeProcess.addEventListener("input", (e) => {
-    verBbeProcess.innerText = parseFloat(e.target.value).toFixed(1);
-    chrome.tabs.query({ active: true, currentWindow: true }, function (tabs) {
-      chrome.tabs.sendMessage(tabs[0].id, {
-        action: "changeBbeProcess",
-        value: e.target.value,
-      });
+  inputTrebleAir.addEventListener("input", (e) => {
+    verTrebleAir.innerText = e.target.value;
+    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+      chrome.tabs.sendMessage(tabs[0].id, { action: "changeTrebleAir", value: e.target.value });
     });
   });
 
-  checkBbeLow.addEventListener("change", (e) => {
-    chrome.tabs.query({ active: true, currentWindow: true }, function (tabs) {
-      chrome.tabs.sendMessage(tabs[0].id, {
-        action: "toggleBbeLow",
-        value: e.target.checked,
-      });
+  checkBassBody.addEventListener("change", (e) => {
+    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+      chrome.tabs.sendMessage(tabs[0].id, { action: "toggleBassBody", value: e.target.checked });
     });
   });
 
-  checkBbeProcess.addEventListener("change", (e) => {
-    chrome.tabs.query({ active: true, currentWindow: true }, function (tabs) {
-      chrome.tabs.sendMessage(tabs[0].id, {
-        action: "toggleBbeProcess",
-        value: e.target.checked,
-      });
+  checkTrebleAir.addEventListener("change", (e) => {
+    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+      chrome.tabs.sendMessage(tabs[0].id, { action: "toggleTrebleAir", value: e.target.checked });
     });
   });
 
-  frecuencias.map((item, index) => {
-    document
-      .getElementById(`band-${index + 1}`)
-      .addEventListener("change", function (e) {
-        document.getElementById(
-          `span-vol-${index + 1}`
-        ).innerText = `Vol: ${deleteDecimal(e.target.value, 2)}`;
-
-        chrome.tabs.query(
-          { active: true, currentWindow: true },
-          function (tabs) {
-            chrome.tabs.sendMessage(tabs[0].id, {
-              action: "changeBandFrecuency",
-              value: e.target.value,
-              index: index,
-              frecuency: item.frecuencia,
-            });
-          }
-        );
+  frecuencias.forEach((item, index) => {
+    document.getElementById(`band-${index + 1}`).addEventListener("change", function (e) {
+      document.getElementById(`span-vol-${index + 1}`).innerText = `Vol: ${deleteDecimal(e.target.value, 2)}`;
+      chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+        chrome.tabs.sendMessage(tabs[0].id, { action: "changeBandFrecuency", value: e.target.value, index, frecuency: item.frecuencia });
       });
+    });
   });
 });
 
-// listen for event from page message handler
 chrome.runtime.onMessage.addListener(function (request, sender, sendResponse) {
-  console.log(request, "in popup window");
-
   if (request.action === "load-info") {
-    const mostrarFrecuenciaBaja = document.getElementById("verFrecuenciaBaja");
-    const mostrarGananciaBaja = document.getElementById("verGananciaBaja");
-    const mostrarFrecuenciaAlta = document.getElementById("verFrecuenciaAlta");
-    const mostrarGananciaAlta = document.getElementById("verGananciaAlta");
-    const inputFrecuenciaBaja = document.getElementById("frecuenciaBaja");
-    const inputGananciaBaja = document.getElementById("gananciaBaja");
-    const inputFrecuenciaAlta = document.getElementById("frecuenciaAlta");
-    const inputGananciaAlta = document.getElementById("gananciaAlta");
-    const switchStatus = document.querySelector("#status");
-
-    const {
-      gananciaBaja,
-      gananciaAlta,
-      frecuenciaBaja,
-      frecuenciaAlta,
-      frecuencias: oldFrecuencies,
-      isActive: active,
-      bbeParams,
-    } = request;
+    const { gananciaBaja, gananciaAlta, frecuenciaBaja, frecuenciaAlta, frecuencias: oldFrecuencies, isActive: active, processorParams } = request;
     isActive = Boolean(active);
-    switchStatus.className = `wrapper-switch ${
-      isActive ? "active" : "disabled"
-    }`;
+    document.querySelector("#status").className = `wrapper-switch ${isActive ? "active" : "disabled"}`;
 
-    mostrarFrecuenciaBaja.innerText = deleteDecimal(frecuenciaBaja);
-    inputFrecuenciaBaja.value = frecuenciaBaja;
+    document.getElementById("verFrecuenciaBaja").innerText = deleteDecimal(frecuenciaBaja);
+    document.getElementById("frecuenciaBaja").value = frecuenciaBaja;
+    document.getElementById("verGananciaBaja").innerText = deleteDecimal(gananciaBaja, 2);
+    document.getElementById("gananciaBaja").value = gananciaBaja;
+    document.getElementById("verFrecuenciaAlta").innerText = deleteDecimal(frecuenciaAlta);
+    document.getElementById("frecuenciaAlta").value = frecuenciaAlta;
+    document.getElementById("verGananciaAlta").innerText = deleteDecimal(gananciaAlta, 2);
+    document.getElementById("gananciaAlta").value = gananciaAlta;
 
-    mostrarGananciaBaja.innerText = deleteDecimal(gananciaBaja, 2);
-    inputGananciaBaja.value = gananciaBaja;
-
-    mostrarFrecuenciaAlta.innerText = deleteDecimal(frecuenciaAlta);
-    inputFrecuenciaAlta.value = frecuenciaAlta;
-
-    mostrarGananciaAlta.innerText = deleteDecimal(gananciaAlta, 2);
-    inputGananciaAlta.value = gananciaAlta;
-
-    if (bbeParams) {
-      const inputBbeLowContour = document.getElementById("bbeLowContour");
-      const inputBbeBassBoost = document.getElementById("bbeBassBoost");
-      const inputBbeProcess = document.getElementById("bbeProcess");
-      const checkBbeLow = document.getElementById("enableBBELow");
-      const checkBbeProcess = document.getElementById("enableBBEProcess");
-      const verBbeLowContour = document.getElementById("verBbeLowContour");
-      const verBbeBassBoost = document.getElementById("verBbeBassBoost");
-      const verBbeProcess = document.getElementById("verBbeProcess");
-
-      inputBbeLowContour.value = bbeParams.lowContour;
-      inputBbeBassBoost.value = bbeParams.bassBoost;
-      inputBbeProcess.value = bbeParams.process;
-      checkBbeLow.checked = bbeParams.lowEnabled;
-      checkBbeProcess.checked = bbeParams.processEnabled;
-      verBbeLowContour.innerText = bbeParams.lowContour.toFixed(1);
-      verBbeBassBoost.innerText = bbeParams.bassBoost.toFixed(1);
-      verBbeProcess.innerText = bbeParams.process.toFixed(1);
+    if (processorParams) {
+      document.getElementById("bassBody").value = processorParams.bassBody;
+      document.getElementById("trebleAir").value = processorParams.trebleAir;
+      document.getElementById("verBassBody").innerText = processorParams.bassBody;
+      document.getElementById("verTrebleAir").innerText = processorParams.trebleAir;
+      document.getElementById("enableBassBody").checked = processorParams.bassEnabled;
+      document.getElementById("enableTrebleAir").checked = processorParams.trebleEnabled;
     }
 
     frecuencias = [...oldFrecuencies];
-
     frecuencias.forEach((item, i) => {
-      document.getElementById(`band-${i + 1}`).value = item.vol; // modificando el input para reflejar el cambio
-      document.getElementById(
-        `span-vol-${i + 1}`
-      ).innerText = `Vol: ${deleteDecimal(item.vol, 2)}`; // modificando el span para reflejar que cambio el volumen
+      document.getElementById(`band-${i + 1}`).value = item.vol;
+      document.getElementById(`span-vol-${i + 1}`).innerText = `Vol: ${deleteDecimal(item.vol, 2)}`;
     });
   }
 });
