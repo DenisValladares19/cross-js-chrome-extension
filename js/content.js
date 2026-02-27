@@ -62,9 +62,16 @@ let bbeParams = {
 
 // Función para crear el módulo BBE Low Contour
 function createBBELowNode(ctx, inputNode, options = {}) {
+  const isEnabled = options.enabled !== undefined ? options.enabled : true;
+
+  if (!isEnabled) {
+    return {
+      output: inputNode,
+    };
+  }
+
   const lowContourGain = options.lowContourGain || 0;
   const bassBoostGain = options.bassBoostGain || 0;
-  const isEnabled = options.enabled !== undefined ? options.enabled : true;
   const frequency = 80; // Hz
 
   // Crear nodos internos
@@ -115,8 +122,15 @@ function createBBELowNode(ctx, inputNode, options = {}) {
 
 // Función para crear el módulo BBE Process (Claridad)
 function createBBEProcessNode(ctx, inputNode, options = {}) {
-  const processGain = options.processGain || 0;
   const isEnabled = options.enabled !== undefined ? options.enabled : true;
+
+  if (!isEnabled) {
+    return {
+      output: inputNode,
+    };
+  }
+
+  const processGain = options.processGain || 0;
   const frequency = 4500; // Hz (entre 3kHz y 5kHz)
 
   // Crear nodos internos
@@ -567,27 +581,13 @@ chrome.runtime.onMessage.addListener(function (request, sender, sendResponse) {
   if (request.action === "toggleBbeLow") {
     bbeParams.lowEnabled = request.value;
     localStorage.setItem("bbeLowEnabled", bbeParams.lowEnabled);
-    if (bbeLowNode) {
-      const gLow = bbeParams.lowEnabled
-        ? Math.pow(10, bbeParams.lowContour / 20) - 1
-        : 0;
-      const gBass = bbeParams.lowEnabled
-        ? Math.pow(10, bbeParams.bassBoost / 20) - 1
-        : 0;
-      bbeLowNode.lowContourGainNode.gain.value = gLow;
-      bbeLowNode.bassBoostGainNode.gain.value = gBass;
-    }
+    location.reload();
   }
 
   if (request.action === "toggleBbeProcess") {
     bbeParams.processEnabled = request.value;
     localStorage.setItem("bbeProcessEnabled", bbeParams.processEnabled);
-    if (bbeProcessNode) {
-      const g = bbeParams.processEnabled
-        ? Math.pow(10, bbeParams.process / 20) - 1
-        : 0;
-      bbeProcessNode.processGainNode.gain.value = g;
-    }
+    location.reload();
   }
 });
 
