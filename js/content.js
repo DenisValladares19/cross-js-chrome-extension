@@ -51,7 +51,6 @@ let gainHight;
 let bbeLowNode;
 let bbeProcessNode;
 let mainMerger; // Para reconexión dinámica
-let ctx; // Contexto de audio global
 
 // Parámetros BBE
 let bbeParams = {
@@ -158,6 +157,40 @@ function createBBEProcessNode(ctx, inputNode, options = {}) {
   };
 }
 
+function reconnectBBE() {
+  if (!lowFilter || !hightFilter || !mainMerger) return;
+
+  // Desconectar lo que sea que esté conectado actualmente al merger
+  lowFilter.output.disconnect();
+  hightFilter.output.disconnect();
+
+  if (bbeLowNode?.output) {
+    // Si existía un nodo previo, intentar desconectarlo por seguridad
+    try {
+      bbeLowNode.output.disconnect();
+    } catch (e) {}
+  }
+  if (bbeProcessNode?.output) {
+    try {
+      bbeProcessNode.output.disconnect();
+    } catch (e) {}
+  }
+
+  // Re-crear y re-conectar nodos basados en estado actual
+  bbeLowNode = createBBELowNode(ctx, lowFilter.output, {
+    lowContourGain: bbeParams.lowContour,
+    bassBoostGain: bbeParams.bassBoost,
+    enabled: bbeParams.lowEnabled,
+  });
+
+  bbeProcessNode = createBBEProcessNode(ctx, hightFilter.output, {
+    processGain: bbeParams.process,
+    enabled: bbeParams.processEnabled,
+  });
+
+  bbeLowNode.output.connect(mainMerger, 0, 0);
+  bbeProcessNode.output.connect(mainMerger, 0, 1);
+}
 
 // Función para crear filtros LR o Butterworth parametrizables
 function createFilter({
@@ -240,7 +273,7 @@ const main = () => {
   const Context = window.webkitAudioContext
     ? window.webkitAudioContext
     : window.AudioContext;
-  if (!ctx) ctx = new Context();
+  ctx = new Context();
   const mediaElement = ctx.createMediaElementSource(audioElement);
 
   frecuencias.forEach((item, index) => {
@@ -333,21 +366,7 @@ const main = () => {
   splitter.connect(gainHight, 1);
 
   // Integración del módulo BBE Sonic Maximizer
-  // Aplicamos Low Contour y Bass Boost a la banda de bajos
-  bbeLowNode = createBBELowNode(ctx, lowFilter.output, {
-    lowContourGain: bbeParams.lowContour,
-    bassBoostGain: bbeParams.bassBoost,
-    enabled: bbeParams.lowEnabled,
-  });
-
-  // Aplicamos Process (realce de armónicos) a la banda de altos
-  bbeProcessNode = createBBEProcessNode(ctx, hightFilter.output, {
-    processGain: bbeParams.process,
-    enabled: bbeParams.processEnabled,
-  });
-
-  bbeLowNode.output.connect(mainMerger, 0, 0);
-  bbeProcessNode.output.connect(mainMerger, 0, 1);
+  reconnectBBE();
 
   let lowCutFilter = Array(4)
     .fill()
@@ -581,38 +600,13 @@ chrome.runtime.onMessage.addListener(function (request, sender, sendResponse) {
   if (request.action === "toggleBbeLow") {
     bbeParams.lowEnabled = request.value;
     localStorage.setItem("bbeLowEnabled", bbeParams.lowEnabled);
-
-    if (lowFilter && mainMerger) {
-      try {
-        lowFilter.output.disconnect(mainMerger, 0, 0);
-        if (bbeLowNode?.output) bbeLowNode.output.disconnect();
-      } catch (e) {}
-
-      bbeLowNode = createBBELowNode(ctx, lowFilter.output, {
-        lowContourGain: bbeParams.lowContour,
-        bassBoostGain: bbeParams.bassBoost,
-        enabled: bbeParams.lowEnabled,
-      });
-      bbeLowNode.output.connect(mainMerger, 0, 0);
-    }
+    reconnectBBE();
   }
 
   if (request.action === "toggleBbeProcess") {
     bbeParams.processEnabled = request.value;
     localStorage.setItem("bbeProcessEnabled", bbeParams.processEnabled);
-
-    if (hightFilter && mainMerger) {
-      try {
-        hightFilter.output.disconnect(mainMerger, 0, 1);
-        if (bbeProcessNode?.output) bbeProcessNode.output.disconnect();
-      } catch (e) {}
-
-      bbeProcessNode = createBBEProcessNode(ctx, hightFilter.output, {
-        processGain: bbeParams.process,
-        enabled: bbeParams.processEnabled,
-      });
-      bbeProcessNode.output.connect(mainMerger, 0, 1);
-    }
+    reconnectBBE();
   }
 });
 
