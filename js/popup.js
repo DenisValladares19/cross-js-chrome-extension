@@ -205,6 +205,31 @@ window.addEventListener("DOMContentLoaded", () => {
     }
   });
 
+  // Profundidad de graves
+  const depthSlider = document.getElementById("depthSlider");
+  const verProfundidad = document.getElementById("verProfundidad");
+  const btnDepthReset = document.getElementById("btn-depth-reset");
+
+  const sendProfundidad = (value) => {
+    const percent = Math.min(100, Math.max(0, Number(value)));
+    verProfundidad.innerText = deleteDecimal(percent);
+    depthSlider.value = percent;
+    chrome.tabs.query({ active: true, currentWindow: true }, function (tabs) {
+      chrome.tabs.sendMessage(tabs[0].id, {
+        action: "changeProfundidad",
+        value: percent,
+      });
+    });
+  };
+
+  depthSlider.addEventListener("input", (e) => {
+    sendProfundidad(e.target.value);
+  });
+
+  btnDepthReset.addEventListener("click", () => {
+    sendProfundidad(0);
+  });
+
   frecuencias.map((item, index) => {
     document
       .getElementById(`band-${index + 1}`)
@@ -250,6 +275,7 @@ chrome.runtime.onMessage.addListener(function (request, sender, sendResponse) {
       frecuenciaAlta,
       frecuencias: oldFrecuencies,
       isActive: active,
+      profundidadGraves: depth,
     } = request;
     isActive = Boolean(active);
     switchStatus.className = `wrapper-switch ${
@@ -267,6 +293,15 @@ chrome.runtime.onMessage.addListener(function (request, sender, sendResponse) {
 
     mostrarGananciaAlta.innerText = deleteDecimal(gananciaAlta, 2);
     inputGananciaAlta.value = gananciaAlta;
+
+    const depthSlider = document.getElementById("depthSlider");
+    const verProfundidad = document.getElementById("verProfundidad");
+    const depthValue =
+      depth !== undefined && depth !== null && !isNaN(Number(depth))
+        ? Math.min(100, Math.max(0, Number(depth)))
+        : 30;
+    depthSlider.value = depthValue;
+    verProfundidad.innerText = deleteDecimal(depthValue);
 
     frecuencias = [...oldFrecuencies];
 

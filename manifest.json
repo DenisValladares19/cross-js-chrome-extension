@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Cross Js",
   "description": "Ecualiza y distribuye tu audio como lo prefieras.",
-  "version": "1.0",
+  "version": "1.1",
   "author": "denisvalladares402@gmail.com",
   "icons": {
     "16": "img/icons/icon-16.png",
