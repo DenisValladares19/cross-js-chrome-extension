@@ -44,6 +44,16 @@ let isActive;
 // variables para los nodos de ganancias de bajas y altas
 let gainLow;
 let gainHight;
+
+// refuerzo de graves
+let bigBottom;
+let bbEnabled;
+let bbTune;
+let bbDrive;
+let bbMix;
+let bbHarmonics;
+
+const BB_DEFAULTS = { bbTune: 80, bbDrive: 6, bbMix: 70, bbHarmonics: 0 };
 // let lowPassFilter;
 // let hightPassFilter;
 
@@ -135,6 +145,13 @@ const main = () => {
     gananciaAlta = 1;
   }
 
+  // refuerzo de graves
+  bbTune = localStorage.getItem("bbTune") || BB_DEFAULTS.bbTune;
+  bbDrive = localStorage.getItem("bbDrive") || BB_DEFAULTS.bbDrive;
+  bbMix = localStorage.getItem("bbMix") || BB_DEFAULTS.bbMix;
+  bbHarmonics = localStorage.getItem("bbHarmonics") || BB_DEFAULTS.bbHarmonics;
+  bbEnabled = localStorage.getItem("bbEnabled") === "1";
+
   if (typeof localStorage.getItem("isActive") !== "undefined") {
     const temp = localStorage.getItem("isActive");
     if (temp === "false" || temp === false) {
@@ -153,6 +170,20 @@ const main = () => {
   ctx = new Context();
   const mediaElement = ctx.createMediaElementSource(audioElement);
 
+  // addModule es asincrono. Armar el grafo dentro de su .then() evita el caso
+  // en que el nodo del compresor no existe todavia y los controles del popup
+  // no tienen nada que mover.
+  loadBigBottomWorklet(
+    ctx,
+    chrome.runtime.getURL("js/worklets/opto-compressor.js"),
+  )
+    .catch((error) => {
+      console.log("no se pudo cargar el worklet de refuerzo de graves", error);
+    })
+    .then(() => buildGraph(mediaElement));
+};
+
+const buildGraph = (mediaElement) => {
   frecuencias.forEach((item, index) => {
     bands[index] = ctx.createBiquadFilter();
     bands[index].type = "peaking"; // 5 || 'peaking'
@@ -216,9 +247,20 @@ const main = () => {
   // merge une los dos canales ya en mono
   const merge = ctx.createChannelMerger(2);
 
+  // Refuerzo de graves al inicio de la cadena: la mono-izacion, el EQ, el
+  // crossover y el low-cut parten de su salida.
+  bigBottom = createBigBottom(ctx, {
+    tune: Number(bbTune),
+    drive: Number(bbDrive),
+    mix: Number(bbMix),
+    harmonics: Number(bbHarmonics),
+    enabled: bbEnabled,
+  });
+  mediaElement.connect(bigBottom.input);
+
   // se conecta los dos separadores de canales al source
-  mediaElement.connect(splitterLeft);
-  mediaElement.connect(splitterRight);
+  bigBottom.output.connect(splitterLeft);
+  bigBottom.output.connect(splitterRight);
 
   // uniendo los dos canales L y R en uno solo que sera R
   splitterRight.connect(mergeRight, 1, 0);
@@ -300,6 +342,16 @@ const setDefaultValue = () => {
   if (!localStorage.getItem("isActive")) {
     localStorage.setItem("isActive", true);
   }
+
+  Object.keys(BB_DEFAULTS).forEach((key) => {
+    if (!localStorage.getItem(key)) {
+      localStorage.setItem(key, BB_DEFAULTS[key]);
+    }
+  });
+
+  if (!localStorage.getItem("bbEnabled")) {
+    localStorage.setItem("bbEnabled", "0");
+  }
 };
 
 const resetFrequency = (index) => {
@@ -348,6 +400,11 @@ chrome.runtime.onMessage.addListener(function (request, sender, sendResponse) {
       frecuenciaAlta,
       frecuencias: [...old],
       isActive: isActive,
+      bbEnabled,
+      bbTune,
+      bbDrive,
+      bbMix,
+      bbHarmonics,
     });
   }
 
@@ -389,6 +446,36 @@ chrome.runtime.onMessage.addListener(function (request, sender, sendResponse) {
     gananciaAlta = request.value;
     gainHight.gain.value = request.value;
     localStorage.setItem("gananciaAlta", gananciaAlta);
+  }
+
+  if (request.action === "toggleBigBottom") {
+    bbEnabled = Boolean(request.value);
+    localStorage.setItem("bbEnabled", bbEnabled ? "1" : "0");
+    bigBottom?.setEnabled(bbEnabled);
+  }
+
+  if (request.action === "changeBbTune") {
+    bbTune = request.value;
+    localStorage.setItem("bbTune", bbTune);
+    bigBottom?.setTune(bbTune);
+  }
+
+  if (request.action === "changeBbDrive") {
+    bbDrive = request.value;
+    localStorage.setItem("bbDrive", bbDrive);
+    bigBottom?.setDrive(bbDrive);
+  }
+
+  if (request.action === "changeBbMix") {
+    bbMix = request.value;
+    localStorage.setItem("bbMix", bbMix);
+    bigBottom?.setMix(bbMix);
+  }
+
+  if (request.action === "changeBbHarmonics") {
+    bbHarmonics = request.value;
+    localStorage.setItem("bbHarmonics", bbHarmonics);
+    bigBottom?.setHarmonics(bbHarmonics);
   }
 
   if (request.action === "changeBandFrecuency") {

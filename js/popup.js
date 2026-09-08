@@ -43,6 +43,13 @@ document.querySelector(
   ".copyright"
 ).innerHTML = `&copy; DENIS VALLADARES ${new Date().getFullYear()}`;
 
+/** Envia una accion al content script de la pestana activa. */
+const sendToTab = (message) => {
+  chrome.tabs.query({ active: true, currentWindow: true }, function (tabs) {
+    chrome.tabs.sendMessage(tabs[0].id, message);
+  });
+};
+
 /**
  * Funcion para quitar o mostrar decimales de un
  * numero pasado por parametros
@@ -144,6 +151,32 @@ window.addEventListener("DOMContentLoaded", () => {
     frecuencias.forEach((item, i) => {
       document.getElementById(`band-${i + 1}`).value = 0; // modificando el input para reflejar el cambio
       document.getElementById(`span-vol-${i + 1}`).innerText = `Vol: 0`; // modificando el span para reflejar que cambio el volumen
+    });
+  });
+
+  // --- Refuerzo de graves ---
+  // "input" y no "change": el efecto se juzga de oido mientras se mueve el
+  // mando, y los setters del procesador ya suavizan con setTargetAtTime.
+  const inputBbEnabled = document.getElementById("bbEnabled");
+
+  inputBbEnabled.addEventListener("change", (e) => {
+    sendToTab({ action: "toggleBigBottom", value: e.target.checked });
+  });
+
+  [
+    { id: "bbTune", ver: "verBbTune", action: "changeBbTune", dec: 0 },
+    { id: "bbDrive", ver: "verBbDrive", action: "changeBbDrive", dec: 1 },
+    { id: "bbMix", ver: "verBbMix", action: "changeBbMix", dec: 0 },
+    {
+      id: "bbHarmonics",
+      ver: "verBbHarmonics",
+      action: "changeBbHarmonics",
+      dec: 0,
+    },
+  ].forEach(({ id, ver, action, dec }) => {
+    document.getElementById(id).addEventListener("input", (e) => {
+      document.getElementById(ver).innerText = deleteDecimal(e.target.value, dec);
+      sendToTab({ action, value: e.target.value });
     });
   });
 
@@ -267,6 +300,22 @@ chrome.runtime.onMessage.addListener(function (request, sender, sendResponse) {
 
     mostrarGananciaAlta.innerText = deleteDecimal(gananciaAlta, 2);
     inputGananciaAlta.value = gananciaAlta;
+
+    document.getElementById("bbEnabled").checked = Boolean(request.bbEnabled);
+    [
+      { id: "bbTune", ver: "verBbTune", value: request.bbTune, dec: 0 },
+      { id: "bbDrive", ver: "verBbDrive", value: request.bbDrive, dec: 1 },
+      { id: "bbMix", ver: "verBbMix", value: request.bbMix, dec: 0 },
+      {
+        id: "bbHarmonics",
+        ver: "verBbHarmonics",
+        value: request.bbHarmonics,
+        dec: 0,
+      },
+    ].forEach(({ id, ver, value, dec }) => {
+      document.getElementById(id).value = value;
+      document.getElementById(ver).innerText = deleteDecimal(value, dec);
+    });
 
     frecuencias = [...oldFrecuencies];
 
