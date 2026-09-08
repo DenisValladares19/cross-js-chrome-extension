@@ -315,3 +315,17 @@ legend {
     padding: 15px;
   }
 }
+
+/* --- Refuerzo de graves --- */
+.bb-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+
+.bb-toggle input[type="checkbox"] {
+  width: auto;
+  margin: 0;
+  cursor: pointer;
+}

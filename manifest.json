@@ -20,7 +20,13 @@
   "content_scripts": [
     {
       "matches": ["https://*.youtube.com/*"],
-      "js": ["./js/content.js"]
+      "js": ["./js/bigbottom.js", "./js/content.js"]
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["js/worklets/opto-compressor.js"],
+      "matches": ["https://*.youtube.com/*"]
     }
   ]
 }
